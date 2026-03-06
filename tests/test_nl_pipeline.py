@@ -323,7 +323,7 @@ class TestResult:
     detail: str = ""
 
 
-def check_result(check_type: str, expected: dict, rows: list, var_name: str = None) -> (bool, str):
+def check_result(check_type: str, expected: dict, rows: list, var_name: str = None) -> tuple[bool, str]:
     """결과 검증"""
     if check_type == "exact_value":
         if not rows:

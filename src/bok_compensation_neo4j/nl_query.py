@@ -222,6 +222,39 @@ def extract_json(text: str) -> dict:
     raise ValueError(f"JSON을 찾을 수 없습니다:\n{text}")
 
 
+
+def classify_intent(query: str) -> str:
+    """Classifies user intent as 'Data' or 'Semantic'."""
+    prompt = f"""
+    You are an intent classifier for a compensation system.
+    Rules:
+    - If the user is asking for specific numbers, amounts, percentages, or salaries explicitly defined in tables (e.g., "how much is the base salary?", "what is the bonus rate?", "how much is the difference?"): Output exactly "Data".
+    - If the user is asking about qualitative rules, eligibility, interpretations, general conditions, or definition (e.g., "can temporary employees get bonuses?", "what is the condition for promotion?", "when is it paid?"): Output exactly "Semantic".
+
+    Query: "{query}"
+    Intent:"""
+    system = "You are a precise classifier. Reply ONLY with 'Data' or 'Semantic'."
+    raw_response = call_ollama(prompt, system=system)
+    return "Data" if "Data" in raw_response else "Semantic"
+
+def get_rules_subgraph(driver) -> str:
+    """Fetches the exact text of all terms and rules (조문), for context."""
+    with driver.session(database=Neo4jConfig().database) as session:
+        result = session.run("MATCH (n:조문) RETURN n.조번호 AS id, n.조문내용 AS text ORDER BY id")
+        rules = [f"Rule {record['id']}: {record['text']}" for record in result]
+    return "\\n".join(rules)
+
+def semantic_answer(query: str, rules_context: str) -> str:
+    """Answers qualitative questions based on rules."""
+    prompt = f"""
+    Rules Context:
+    {rules_context}
+
+    Question: {query}
+    Answer based ONLY on the Rules Context in Korean:"""
+    system = "You are a professional HR assistant for Bank of Korea. Give clear, concise Korean answers."
+    return call_ollama(prompt, system=system)
+
 def nl_to_cypher(question: str) -> dict:
     """자연어 질문 → Cypher + 메타데이터 dict"""
     print(f"\n🔄 LLM에 질문 전송 중... (모델: {MODEL_NAME})")
@@ -355,11 +388,29 @@ def generate_answer(question: str, rows: list) -> str:
 
 # ── 메인 ─────────────────────────────────────────────────────────
 def run(question: str):
-    """전체 파이프라인: 자연어 → Cypher → 실행 → 자연어 답변"""
+    """전체 파이프라인: 자연어 → (Intent) → Cypher/Semantic → 실행 → 자연어 답변"""
     print("=" * 70)
     print(f"💬 질문: {question}")
     print("=" * 70)
 
+    intent = classify_intent(question)
+    print(f"🧠 Detected Intent: {intent}")
+
+    if intent == "Semantic":
+        config = Neo4jConfig()
+        driver = get_driver(config)
+        print("🔍 의미/규칙 검색을 위해 조문 텍스트를 조회합니다...")
+        rules_context = get_rules_subgraph(driver)
+        driver.close()
+        
+        print("✍️ 답변 생성 중...")
+        answer = semantic_answer(question, rules_context)
+        print("\n✅ 최종 답변:")
+        print(answer)
+        print("=" * 70)
+        return answer
+
+    print("📊 Data/Math 의도가 감지되었습니다. 지식을 추출하는 Cypher를 생성합니다...")
     MAX_RETRIES = 2
     rows = None
     cypher = None
@@ -429,6 +480,7 @@ def run(question: str):
     print(f"{'=' * 70}")
     print(answer)
     print(f"{'=' * 70}")
+    return answer
 
 
 def main():
