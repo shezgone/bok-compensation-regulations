@@ -303,10 +303,19 @@ def _enrich_starting_step(rows: list, variables: list) -> (list, list):
     # 설명에서 직급 힌트 추출
     desc_val = sample.get("desc", sample.get("설명", ""))
     grade_code = None
-    if "5급" in str(desc_val) or "G5" in str(desc_val):
+    desc_str = str(desc_val)
+    # 종합기획직원 직급 패턴
+    if "5급" in desc_str or "G5" in desc_str:
         grade_code = "5급"
-    elif "6급" in str(desc_val):
+    elif "6급" in desc_str:
         grade_code = "6급"
+    # 일반사무/서무/청원경찰 직렬 패턴
+    elif "일반사무" in desc_str:
+        grade_code = "GA"
+    elif "서무" in desc_str:
+        grade_code = "CL"
+    elif "청원경찰" in desc_str:
+        grade_code = "PO"
 
     if grade_code is None:
         return rows, variables
