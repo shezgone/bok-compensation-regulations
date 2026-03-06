@@ -447,14 +447,17 @@ def insert_overseas_salary(session):
 
 def insert_starting_step(session):
     """별표2 초임호봉기준 + 초임호봉결정 관계"""
+    # 별표2 초임호봉표 원본 기준
     starting = [
-        ("CT-GP", 21, "종합기획직원 초임호봉"),
-        ("CT-GA", 11, "일반사무직원 초임호봉"),
-        ("CT-CL", 11, "서무직원 초임호봉"),
-        ("CT-PO", 11, "청원경찰 초임호봉"),
+        ("CT-GP-5", "CT-GP", 11, "종합기획 5급(G5) 초임호봉"),
+        ("CT-GP-6", "CT-GP", 6,  "종합기획 6급 초임호봉"),
+        ("CT-GA",   "CT-GA", 1,  "일반사무직원 초임호봉"),
+        ("CT-SP",   "CT-SP", 4,  "별정직원 초임호봉"),
+        ("CT-CL",   "CT-CL", 6,  "서무직원 초임호봉"),
+        ("CT-PO",   "CT-PO", 6,  "청원경찰 초임호봉"),
     ]
-    for ct_code, hobong, desc in starting:
-        code = f"START-{ct_code}"
+    for st_code, ct_code, hobong, desc in starting:
+        code = f"START-{st_code}"
         session.run("""
             MATCH (ct:직렬 {직렬코드: $ct_code})
             CREATE (s:초임호봉기준 {코드: $code, 초임호봉번호: $hobong,
