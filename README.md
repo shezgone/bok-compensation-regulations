@@ -150,6 +150,10 @@ MATCH (g:직급 {직급코드: '3급'})-[r]-(n) RETURN g, r, n LIMIT 30
 
 보수규정 문서의 모든 정보를 표현하도록 전면 개정된 스키마입니다.
 
+### Neo4j LPG 스키마 다이어그램
+
+![LPG Schema](docs/lpg-bok-compensation.png)
+
 ### 엔티티/노드 (17종, 327건)
 
 | 엔티티 | 건수 | 출처 | 설명 |

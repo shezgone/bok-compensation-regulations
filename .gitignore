@@ -207,5 +207,6 @@ marimo/_lsp/
 __marimo__/
 *.DS_Store
 *.png
+!docs/*.png
 __pycache__/
 .venv/
