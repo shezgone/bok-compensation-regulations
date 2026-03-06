@@ -280,6 +280,69 @@ def format_value(val, vtype: str) -> str:
     return str(val)
 
 
+# ── 결과 후처리 가드 ─────────────────────────────────────────────
+def _enrich_starting_step(rows: list, variables: list) -> (list, list):
+    """초임호봉번호만 조회되고 호봉금액이 없을 때, 자동으로 호봉 테이블을 JOIN하여 보강.
+
+    LLM이 few-shot 예시를 무시하고 간단한 쿼리를 생성하는 경우 방어.
+    """
+    if not rows:
+        return rows, variables
+
+    var_names = {v["name"] for v in variables}
+    has_hobong_num = bool(var_names & {"n", "초임호봉번호", "hobong"})
+    has_salary = bool(var_names & {"salary", "호봉금액", "amt", "amount"})
+
+    if not has_hobong_num or has_salary:
+        return rows, variables
+
+    # 초임호봉번호 키 찾기
+    hobong_key = next(k for k in ("n", "초임호봉번호", "hobong") if k in var_names)
+    sample = rows[0]
+
+    # 설명에서 직급 힌트 추출
+    desc_val = sample.get("desc", sample.get("설명", ""))
+    grade_code = None
+    if "5급" in str(desc_val) or "G5" in str(desc_val):
+        grade_code = "5급"
+    elif "6급" in str(desc_val):
+        grade_code = "6급"
+
+    if grade_code is None:
+        return rows, variables
+
+    hobong_num = sample[hobong_key]
+    if not isinstance(hobong_num, (int, float)):
+        return rows, variables
+    hobong_num = int(hobong_num)
+
+    print(f"\n🔧 초임호봉 결과 보강: {grade_code} {hobong_num}호봉 금액 조회 중...")
+    try:
+        config = TypeDBConfig()
+        driver = get_driver(config)
+        tx = driver.transaction(config.database, TransactionType.READ)
+        result = tx.query(f"""
+            match
+                $g isa 직급, has 직급코드 "{grade_code}";
+                (소속직급: $g, 구성호봉: $h) isa 호봉체계구성;
+                $h has 호봉번호 {hobong_num}, has 호봉금액 $salary;
+        """).resolve()
+        salary_rows = list(result)
+        tx.close()
+        driver.close()
+
+        if salary_rows:
+            salary = salary_rows[0].get("salary").get_double()
+            for row in rows:
+                row["salary"] = salary
+            variables.append({"name": "salary", "label": "호봉금액", "type": "double"})
+            print(f"   → {hobong_num}호봉 = {salary:,.0f}원 보강 완료")
+    except Exception as e:
+        print(f"   ⚠️ 보강 실패: {e}")
+
+    return rows, variables
+
+
 # ── 자연어 답변 생성 ─────────────────────────────────────────────
 def generate_answer(question: str, variables: list, rows: list) -> str:
     """쿼리 결과를 자연어 답변으로 변환 (LLM 사용)"""
@@ -366,6 +429,9 @@ def run(question: str):
             if attempt == MAX_RETRIES:
                 print(f"\n⛔ {MAX_RETRIES}회 재시도 후에도 실패했습니다.")
                 return
+
+    # 결과 후처리: 초임호봉 결과 보강 가드
+    rows, variables = _enrich_starting_step(rows, variables)
 
     # 결과 테이블 출력
     if rows:
