@@ -1,0 +1,24 @@
+[project]
+name = "bok-compensation-regulations"
+version = "0.1.0"
+description = "TypeDB 기반 한국은행 인사 보수규정 온톨로지"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "typedb-driver",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

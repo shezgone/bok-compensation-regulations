@@ -1,0 +1,397 @@
+######################################################################
+# 한국은행 보수규정 온톨로지 스키마 (TypeDB 3.x TypeQL)
+# Bank of Korea Compensation Regulations Ontology
+# 보수규정 전문(20250213).pdf 기반 — 전면 개정
+######################################################################
+
+define
+
+# ============================================================
+# 1. 속성 타입 (Attribute Types)
+# ============================================================
+
+# --- 공통 속성 ---
+attribute 명칭,           value string;
+attribute 코드,           value string;
+attribute 설명,           value string;
+attribute 시행일,         value datetime;
+attribute 개정일,         value datetime;
+attribute 적용시작일,     value datetime;
+attribute 적용종료일,     value datetime;
+attribute 활성여부,       value boolean;
+
+# --- 규정 관련 속성 ---
+attribute 규정번호,       value string;
+attribute 조번호,         value integer;
+attribute 항번호,         value integer;
+attribute 호번호,         value integer;
+attribute 조문내용,       value string;
+attribute 비고,           value string;
+
+# --- 직원 관련 속성 ---
+attribute 직원번호,       value string;
+attribute 성명,           value string;
+attribute 입행일,         value datetime;
+attribute 퇴직일,         value datetime;
+attribute 생년월일,       value datetime;
+
+# --- 직렬 관련 속성 (NEW) ---
+attribute 직렬코드,       value string;
+attribute 직렬명,         value string;
+
+# --- 직급/직위 관련 속성 ---
+attribute 직급명,         value string;
+attribute 직급코드,       value string;
+attribute 직위명,         value string;
+attribute 직위코드,       value string;
+attribute 서열,           value integer;
+
+# --- 보수 관련 속성 ---
+attribute 기본급액,       value double;
+attribute 수당액,         value double;
+attribute 지급률,         value double;
+attribute 호봉번호,       value integer;
+attribute 호봉금액,       value double;
+attribute 지급기준일,     value datetime;
+attribute 통화단위,       value string;
+attribute 직책급액,       value double;    # (NEW) 별표1-1
+attribute 차등액,         value double;    # (NEW) 별표7
+attribute 초임호봉번호,   value integer;   # (NEW) 별표2
+
+# --- 수당 관련 속성 ---
+attribute 수당유형,       value string;
+attribute 수당명,         value string;
+attribute 수당코드,       value string;
+attribute 지급조건,       value string;
+attribute 상한액,         value double;
+attribute 하한액,         value double;
+
+# --- 근무 관련 속성 ---
+attribute 근무형태명,     value string;
+attribute 근무시간,       value double;
+attribute 초과근무시간,   value double;
+
+# --- 부서 관련 속성 ---
+attribute 부서코드,       value string;
+attribute 부서명,         value string;
+
+# --- 평가/승급 관련 속성 ---
+attribute 평가등급,       value string;
+attribute 승급호봉수,     value integer;
+attribute 평가년도,       value integer;
+attribute 배분율,         value double;    # (NEW) 별표1-3
+
+# --- 상여금 관련 속성 (NEW) ---
+attribute 상여유형,       value string;    # 정기/평가
+attribute 연간지급률,     value double;    # 예: 3.8 (=380%)
+
+# --- 임금피크제 관련 속성 (NEW) ---
+attribute 적용연차,       value integer;   # 별표9
+
+# --- 해외 관련 속성 (NEW) ---
+attribute 국가코드,       value string;
+attribute 국가명,         value string;
+
+
+# ============================================================
+# 2. 엔티티 타입 (Entity Types)
+# ============================================================
+
+# --- 규정 체계 ---
+entity 규정,
+    owns 규정번호 @key,
+    owns 명칭,
+    owns 설명,
+    owns 시행일,
+    owns 활성여부,
+    plays 규정구성:상위규정,
+    plays 규정개정:대상규정;
+
+entity 조문,
+    owns 조번호,
+    owns 항번호,
+    owns 호번호,
+    owns 조문내용,
+    owns 비고,
+    plays 규정구성:하위조문;
+
+entity 개정이력,
+    owns 개정일,
+    owns 설명,
+    plays 규정개정:이력;
+
+# --- 조직 ---
+entity 부서,
+    owns 부서코드 @key,
+    owns 부서명,
+    owns 활성여부,
+    plays 부서계층:상위부서,
+    plays 부서계층:하위부서,
+    plays 소속:소속부서;
+
+# --- 인사 ---
+entity 직렬,
+    owns 직렬코드 @key,
+    owns 직렬명,
+    owns 설명,
+    plays 직렬분류:분류직렬,
+    plays 초임호봉결정:대상직렬;
+
+entity 직원,
+    owns 직원번호 @key,
+    owns 성명,
+    owns 입행일,
+    owns 퇴직일,
+    owns 생년월일,
+    plays 소속:소속직원,
+    plays 직급부여:대상직원,
+    plays 직위부여:대상직원,
+    plays 호봉책정:대상직원,
+    plays 보수지급:수령직원,
+    plays 수당지급:수령직원,
+    plays 근무수행:근무직원,
+    plays 인사평가:피평가자;
+
+entity 직급,
+    owns 직급코드 @key,
+    owns 직급명,
+    owns 서열,
+    plays 직급부여:부여직급,
+    plays 직렬분류:분류직급,
+    plays 호봉체계구성:소속직급,
+    plays 직책급결정:해당직급,
+    plays 연봉차등:해당직급,
+    plays 연봉상한:해당직급,
+    plays 국외본봉결정:해당직급;
+
+entity 직위,
+    owns 직위코드 @key,
+    owns 직위명,
+    owns 서열,
+    plays 직위부여:부여직위,
+    plays 직책급결정:해당직위,
+    plays 상여금결정:해당직책구분;
+
+# --- 보수 체계 ---
+entity 호봉,
+    owns 호봉번호,
+    owns 호봉금액,
+    owns 적용시작일,
+    owns 적용종료일,
+    plays 호봉체계구성:구성호봉,
+    plays 호봉책정:책정호봉;
+
+entity 보수기준,
+    owns 코드 @key,
+    owns 명칭,
+    owns 기본급액,
+    owns 적용시작일,
+    owns 적용종료일,
+    owns 설명,
+    plays 보수지급:지급기준;
+
+entity 수당,
+    owns 수당코드 @key,
+    owns 수당명,
+    owns 수당유형,
+    owns 수당액,
+    owns 지급률,
+    owns 지급조건,
+    owns 상한액,
+    owns 하한액,
+    owns 설명,
+    plays 수당지급:지급수당;
+
+# --- 직책급 (NEW: 별표1-1) ---
+entity 직책급기준,
+    owns 코드 @key,
+    owns 직책급액,
+    owns 적용시작일,
+    owns 적용종료일,
+    owns 설명,
+    plays 직책급결정:적용기준;
+
+# --- 상여금 (NEW: 제12조, 별표1-2) ---
+entity 상여금기준,
+    owns 코드 @key,
+    owns 상여유형,
+    owns 명칭,
+    owns 연간지급률,
+    owns 지급률,
+    owns 설명,
+    plays 상여금결정:적용기준;
+
+# --- 연봉제 (NEW: 별표7, 별표8) ---
+entity 연봉차등액기준,
+    owns 코드 @key,
+    owns 차등액,
+    owns 적용시작일,
+    owns 설명,
+    plays 연봉차등:적용기준;
+
+entity 연봉상한액기준,
+    owns 코드 @key,
+    owns 상한액,
+    owns 적용시작일,
+    owns 설명,
+    plays 연봉상한:적용기준;
+
+# --- 임금피크제 (NEW: 별표9) ---
+entity 임금피크제기준,
+    owns 코드 @key,
+    owns 적용연차,
+    owns 지급률,
+    owns 설명;
+
+# --- 해외 (NEW: 별표1-5) ---
+entity 국외본봉기준,
+    owns 코드 @key,
+    owns 국가코드,
+    owns 국가명,
+    owns 기본급액,
+    owns 통화단위,
+    owns 적용시작일,
+    owns 설명,
+    plays 국외본봉결정:적용기준;
+
+# --- 초임호봉 (NEW: 별표2) ---
+entity 초임호봉기준,
+    owns 코드 @key,
+    owns 초임호봉번호,
+    owns 설명,
+    plays 초임호봉결정:적용기준;
+
+# --- 근무 ---
+entity 근무형태,
+    owns 코드 @key,
+    owns 근무형태명,
+    owns 근무시간,
+    owns 설명,
+    plays 근무수행:수행형태;
+
+# --- 평가 ---
+entity 평가결과,
+    owns 평가등급,
+    owns 평가년도,
+    owns 승급호봉수,
+    owns 배분율,
+    plays 인사평가:평가결과정보,
+    plays 연봉차등:해당등급,
+    plays 상여금결정:해당등급;
+
+
+# ============================================================
+# 3. 관계 타입 (Relation Types)
+# ============================================================
+
+# --- 규정 관계 ---
+relation 규정구성,
+    relates 상위규정,
+    relates 하위조문;
+
+relation 규정개정,
+    relates 대상규정,
+    relates 이력;
+
+# --- 조직 관계 ---
+relation 부서계층,
+    relates 상위부서,
+    relates 하위부서;
+
+relation 소속,
+    relates 소속직원,
+    relates 소속부서,
+    owns 적용시작일,
+    owns 적용종료일;
+
+# --- 인사 관계 ---
+relation 직급부여,
+    relates 대상직원,
+    relates 부여직급,
+    owns 적용시작일,
+    owns 적용종료일,
+    owns 비고;
+
+relation 직위부여,
+    relates 대상직원,
+    relates 부여직위,
+    owns 적용시작일,
+    owns 적용종료일,
+    owns 비고;
+
+relation 직렬분류,
+    relates 분류직렬,
+    relates 분류직급;
+
+# --- 보수 관계 ---
+relation 호봉체계구성,
+    relates 소속직급,
+    relates 구성호봉;
+
+relation 호봉책정,
+    relates 대상직원,
+    relates 책정호봉,
+    owns 적용시작일,
+    owns 적용종료일,
+    owns 비고;
+
+relation 직책급결정,
+    relates 적용기준,
+    relates 해당직급,
+    relates 해당직위;
+
+relation 보수지급,
+    relates 수령직원,
+    relates 지급기준,
+    owns 기본급액,
+    owns 지급기준일,
+    owns 통화단위,
+    owns 비고;
+
+relation 수당지급,
+    relates 수령직원,
+    relates 지급수당,
+    owns 수당액,
+    owns 지급기준일,
+    owns 통화단위,
+    owns 비고;
+
+# --- 상여금 관계 (NEW) ---
+relation 상여금결정,
+    relates 적용기준,
+    relates 해당직책구분,
+    relates 해당등급;
+
+# --- 연봉제 관계 (NEW) ---
+relation 연봉차등,
+    relates 적용기준,
+    relates 해당직급,
+    relates 해당등급;
+
+relation 연봉상한,
+    relates 적용기준,
+    relates 해당직급;
+
+# --- 해외 관계 (NEW) ---
+relation 국외본봉결정,
+    relates 적용기준,
+    relates 해당직급;
+
+# --- 초임호봉 관계 (NEW) ---
+relation 초임호봉결정,
+    relates 적용기준,
+    relates 대상직렬;
+
+# --- 근무 관계 ---
+relation 근무수행,
+    relates 근무직원,
+    relates 수행형태,
+    owns 적용시작일,
+    owns 적용종료일,
+    owns 초과근무시간;
+
+# --- 평가 관계 ---
+relation 인사평가,
+    relates 피평가자,
+    relates 평가결과정보,
+    owns 비고;
