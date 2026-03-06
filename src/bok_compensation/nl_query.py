@@ -226,6 +226,56 @@ def extract_json(text: str) -> dict:
     raise ValueError(f"JSON을 찾을 수 없습니다:\n{text}")
 
 
+def classify_intent(query: str) -> str:
+    """Classifies user intent as 'Data' or 'Semantic'."""
+    prompt = f"""
+    You are an intent classifier for a compensation system.
+    Rules:
+    - If the user is asking for specific numbers, amounts, percentages, salaries, comparisons, or tabular values: Output exactly "Data".
+    - If the user is asking about qualitative rules, eligibility, interpretations, conditions, exceptions, or definitions: Output exactly "Semantic".
+
+    Query: "{query}"
+    Intent:"""
+    system = "You are a precise classifier. Reply ONLY with 'Data' or 'Semantic'."
+    raw_response = call_ollama(prompt, system=system)
+    return "Data" if "Data" in raw_response else "Semantic"
+
+
+def get_rules_subgraph() -> str:
+    """Fetches regulation article text from TypeDB for semantic answers."""
+    config = TypeDBConfig()
+    driver = get_driver(config)
+    tx = driver.transaction(config.database, TransactionType.READ)
+
+    try:
+        result = tx.query("""
+            match
+                $article isa 조문, has 조번호 $id, has 조문내용 $text;
+            sort $id;
+        """).resolve()
+        rules = []
+        for row in result:
+            rule_id = row.get("id").get_integer()
+            rule_text = row.get("text").get_value()
+            rules.append(f"Rule {rule_id}: {rule_text}")
+        return "\n".join(rules)
+    finally:
+        tx.close()
+        driver.close()
+
+
+def semantic_answer(query: str, rules_context: str) -> str:
+    """Answers qualitative questions based only on regulation text."""
+    prompt = f"""
+    Rules Context:
+    {rules_context}
+
+    Question: {query}
+    Answer based ONLY on the Rules Context in Korean:"""
+    system = "You are a professional HR assistant for Bank of Korea. Give clear, concise Korean answers."
+    return call_ollama(prompt, system=system)
+
+
 def nl_to_typeql(question: str) -> dict:
     """자연어 질문 → TypeQL + 메타데이터 dict"""
     print(f"\n🔄 LLM에 질문 전송 중... (모델: {MODEL_NAME})")
@@ -281,7 +331,7 @@ def format_value(val, vtype: str) -> str:
 
 
 # ── 결과 후처리 가드 ─────────────────────────────────────────────
-def _enrich_starting_step(rows: list, variables: list) -> (list, list):
+def _enrich_starting_step(rows: list, variables: list) -> tuple[list, list]:
     """초임호봉번호만 조회되고 호봉금액이 없을 때, 자동으로 호봉 테이블을 JOIN하여 보강.
 
     LLM이 few-shot 예시를 무시하고 간단한 쿼리를 생성하는 경우 방어.
@@ -386,10 +436,24 @@ def generate_answer(question: str, variables: list, rows: list) -> str:
 
 # ── 메인 ─────────────────────────────────────────────────────────
 def run(question: str):
-    """전체 파이프라인: 자연어 → TypeQL → 실행 → 자연어 답변"""
+    """전체 파이프라인: 자연어 → (Intent) → TypeQL/Semantic → 실행 → 자연어 답변"""
     print("=" * 70)
     print(f"💬 질문: {question}")
     print("=" * 70)
+
+    intent = classify_intent(question)
+    print(f"🧠 Detected Intent: {intent}")
+
+    if intent == "Semantic":
+        print("🔍 의미/규칙 검색을 위해 조문 텍스트를 조회합니다...")
+        rules_context = get_rules_subgraph()
+
+        print("✍️ 답변 생성 중...")
+        answer = semantic_answer(question, rules_context)
+        print("\n✅ 최종 답변:")
+        print(answer)
+        print("=" * 70)
+        return answer
 
     MAX_RETRIES = 2
     rows = None
@@ -466,6 +530,7 @@ def run(question: str):
     print(f"{'=' * 70}")
     print(answer)
     print(f"{'=' * 70}")
+    return answer
 
 
 def main():
