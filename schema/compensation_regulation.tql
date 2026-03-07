@@ -28,7 +28,6 @@ attribute 호번호,         value integer;
 attribute 조문내용,       value string;
 attribute 비고,           value string;
 
-
 # --- 직렬 관련 속성 (NEW) ---
 attribute 직렬코드,       value string;
 attribute 직렬명,         value string;
@@ -60,8 +59,6 @@ attribute 지급조건,       value string;
 attribute 상한액,         value double;
 attribute 하한액,         value double;
 
-
-
 # --- 평가/승급 관련 속성 ---
 attribute 평가등급,       value string;
 attribute 승급호봉수,     value integer;
@@ -78,7 +75,6 @@ attribute 적용연차,       value integer;   # 별표9
 # --- 해외 관련 속성 (NEW) ---
 attribute 국가코드,       value string;
 attribute 국가명,         value string;
-
 
 # ============================================================
 # 2. 엔티티 타입 (Entity Types)
@@ -107,7 +103,6 @@ entity 개정이력,
     owns 설명,
     plays 규정개정:이력;
 
-
 # --- 인사 ---
 entity 직렬,
     owns 직렬코드 @key,
@@ -115,7 +110,6 @@ entity 직렬,
     owns 설명,
     plays 직렬분류:분류직렬,
     plays 초임호봉결정:대상직렬;
-
 
 entity 직급,
     owns 직급코드 @key,
@@ -221,7 +215,6 @@ entity 초임호봉기준,
     owns 설명,
     plays 초임호봉결정:적용기준;
 
-
 # --- 평가 ---
 entity 평가결과,
     owns 평가등급,
@@ -230,7 +223,6 @@ entity 평가결과,
     owns 배분율,
     plays 연봉차등:해당등급,
     plays 상여금결정:해당등급;
-
 
 # ============================================================
 # 3. 관계 타입 (Relation Types)
@@ -245,10 +237,7 @@ relation 규정개정,
     relates 대상규정,
     relates 이력;
 
-
-
 # --- 인사 관계 ---
-
 
 relation 직렬분류,
     relates 분류직렬,
@@ -259,13 +248,10 @@ relation 호봉체계구성,
     relates 소속직급,
     relates 구성호봉;
 
-
 relation 직책급결정,
     relates 적용기준,
     relates 해당직급,
     relates 해당직위;
-
-
 
 # --- 상여금 관계 (NEW) ---
 relation 상여금결정,
@@ -292,6 +278,5 @@ relation 국외본봉결정,
 relation 초임호봉결정,
     relates 적용기준,
     relates 대상직렬;
-
 
 # --- 평가 관계 ---
