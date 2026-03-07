@@ -28,12 +28,6 @@ attribute 호번호,         value integer;
 attribute 조문내용,       value string;
 attribute 비고,           value string;
 
-# --- 직원 관련 속성 ---
-attribute 직원번호,       value string;
-attribute 성명,           value string;
-attribute 입행일,         value datetime;
-attribute 퇴직일,         value datetime;
-attribute 생년월일,       value datetime;
 
 # --- 직렬 관련 속성 (NEW) ---
 attribute 직렬코드,       value string;
@@ -66,14 +60,7 @@ attribute 지급조건,       value string;
 attribute 상한액,         value double;
 attribute 하한액,         value double;
 
-# --- 근무 관련 속성 ---
-attribute 근무형태명,     value string;
-attribute 근무시간,       value double;
-attribute 초과근무시간,   value double;
 
-# --- 부서 관련 속성 ---
-attribute 부서코드,       value string;
-attribute 부서명,         value string;
 
 # --- 평가/승급 관련 속성 ---
 attribute 평가등급,       value string;
@@ -120,14 +107,6 @@ entity 개정이력,
     owns 설명,
     plays 규정개정:이력;
 
-# --- 조직 ---
-entity 부서,
-    owns 부서코드 @key,
-    owns 부서명,
-    owns 활성여부,
-    plays 부서계층:상위부서,
-    plays 부서계층:하위부서,
-    plays 소속:소속부서;
 
 # --- 인사 ---
 entity 직렬,
@@ -137,26 +116,11 @@ entity 직렬,
     plays 직렬분류:분류직렬,
     plays 초임호봉결정:대상직렬;
 
-entity 직원,
-    owns 직원번호 @key,
-    owns 성명,
-    owns 입행일,
-    owns 퇴직일,
-    owns 생년월일,
-    plays 소속:소속직원,
-    plays 직급부여:대상직원,
-    plays 직위부여:대상직원,
-    plays 호봉책정:대상직원,
-    plays 보수지급:수령직원,
-    plays 수당지급:수령직원,
-    plays 근무수행:근무직원,
-    plays 인사평가:피평가자;
 
 entity 직급,
     owns 직급코드 @key,
     owns 직급명,
     owns 서열,
-    plays 직급부여:부여직급,
     plays 직렬분류:분류직급,
     plays 호봉체계구성:소속직급,
     plays 직책급결정:해당직급,
@@ -168,7 +132,6 @@ entity 직위,
     owns 직위코드 @key,
     owns 직위명,
     owns 서열,
-    plays 직위부여:부여직위,
     plays 직책급결정:해당직위,
     plays 상여금결정:해당직책구분;
 
@@ -178,8 +141,7 @@ entity 호봉,
     owns 호봉금액,
     owns 적용시작일,
     owns 적용종료일,
-    plays 호봉체계구성:구성호봉,
-    plays 호봉책정:책정호봉;
+    plays 호봉체계구성:구성호봉;
 
 entity 보수기준,
     owns 코드 @key,
@@ -187,8 +149,7 @@ entity 보수기준,
     owns 기본급액,
     owns 적용시작일,
     owns 적용종료일,
-    owns 설명,
-    plays 보수지급:지급기준;
+    owns 설명;
 
 entity 수당,
     owns 수당코드 @key,
@@ -199,8 +160,7 @@ entity 수당,
     owns 지급조건,
     owns 상한액,
     owns 하한액,
-    owns 설명,
-    plays 수당지급:지급수당;
+    owns 설명;
 
 # --- 직책급 (NEW: 별표1-1) ---
 entity 직책급기준,
@@ -261,13 +221,6 @@ entity 초임호봉기준,
     owns 설명,
     plays 초임호봉결정:적용기준;
 
-# --- 근무 ---
-entity 근무형태,
-    owns 코드 @key,
-    owns 근무형태명,
-    owns 근무시간,
-    owns 설명,
-    plays 근무수행:수행형태;
 
 # --- 평가 ---
 entity 평가결과,
@@ -275,7 +228,6 @@ entity 평가결과,
     owns 평가년도,
     owns 승급호봉수,
     owns 배분율,
-    plays 인사평가:평가결과정보,
     plays 연봉차등:해당등급,
     plays 상여금결정:해당등급;
 
@@ -293,31 +245,10 @@ relation 규정개정,
     relates 대상규정,
     relates 이력;
 
-# --- 조직 관계 ---
-relation 부서계층,
-    relates 상위부서,
-    relates 하위부서;
 
-relation 소속,
-    relates 소속직원,
-    relates 소속부서,
-    owns 적용시작일,
-    owns 적용종료일;
 
 # --- 인사 관계 ---
-relation 직급부여,
-    relates 대상직원,
-    relates 부여직급,
-    owns 적용시작일,
-    owns 적용종료일,
-    owns 비고;
 
-relation 직위부여,
-    relates 대상직원,
-    relates 부여직위,
-    owns 적용시작일,
-    owns 적용종료일,
-    owns 비고;
 
 relation 직렬분류,
     relates 분류직렬,
@@ -328,33 +259,13 @@ relation 호봉체계구성,
     relates 소속직급,
     relates 구성호봉;
 
-relation 호봉책정,
-    relates 대상직원,
-    relates 책정호봉,
-    owns 적용시작일,
-    owns 적용종료일,
-    owns 비고;
 
 relation 직책급결정,
     relates 적용기준,
     relates 해당직급,
     relates 해당직위;
 
-relation 보수지급,
-    relates 수령직원,
-    relates 지급기준,
-    owns 기본급액,
-    owns 지급기준일,
-    owns 통화단위,
-    owns 비고;
 
-relation 수당지급,
-    relates 수령직원,
-    relates 지급수당,
-    owns 수당액,
-    owns 지급기준일,
-    owns 통화단위,
-    owns 비고;
 
 # --- 상여금 관계 (NEW) ---
 relation 상여금결정,
@@ -382,16 +293,5 @@ relation 초임호봉결정,
     relates 적용기준,
     relates 대상직렬;
 
-# --- 근무 관계 ---
-relation 근무수행,
-    relates 근무직원,
-    relates 수행형태,
-    owns 적용시작일,
-    owns 적용종료일,
-    owns 초과근무시간;
 
 # --- 평가 관계 ---
-relation 인사평가,
-    relates 피평가자,
-    relates 평가결과정보,
-    owns 비고;
