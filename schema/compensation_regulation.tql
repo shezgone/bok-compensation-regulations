@@ -11,6 +11,17 @@ define
 # ============================================================
 
 # --- 공통 속성 ---
+
+attribute 직책급코드, value string;
+attribute 보수코드, value string;
+attribute 근무형태코드, value string;
+attribute 상여금코드, value string;
+attribute 연봉차등액코드, value string;
+attribute 연봉상한액코드, value string;
+attribute 임금피크제코드, value string;
+attribute 국외본봉코드, value string;
+attribute 초임호봉코드, value string;
+
 attribute 명칭,           value string;
 attribute 규정설명, value string;
 attribute 개정이력설명, value string;
