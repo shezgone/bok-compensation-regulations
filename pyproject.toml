@@ -12,6 +12,21 @@ dependencies = [
 dev = [
     "pytest",
 ]
+neo4j = [
+    "neo4j",
+]
+llm = [
+    "langchain-core",
+    "langchain-ollama",
+    "langgraph",
+]
+full = [
+    "neo4j",
+    "langchain-core",
+    "langchain-ollama",
+    "langgraph",
+    "pytest",
+]
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]

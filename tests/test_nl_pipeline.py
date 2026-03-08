@@ -154,13 +154,13 @@ DIRECT_TESTS = [
         description="미국 주재 1급 국외본봉 확인",
         cypher="""
             MATCH (o:국외본봉기준 {국가명: '미국'})-[:해당직급]->(g:직급 {직급코드: '1급'})
-            RETURN o.기본급액 AS amt, o.통화단위 AS cur
+            RETURN o.국외기본급액 AS amt, o.통화단위 AS cur
         """,
         typeql="""
             match
                 $g isa 직급, has 직급코드 "1급";
                 (적용기준: $os, 해당직급: $g) isa 국외본봉결정;
-                $os has 국가명 "미국", has 기본급액 $amt, has 통화단위 $cur;
+                $os has 국가명 "미국", has 국외기본급액 $amt, has 통화단위 $cur;
         """,
         typeql_vars=[
             {"name": "amt", "type": "double"},
@@ -175,7 +175,7 @@ DIRECT_TESTS = [
         cypher="""
             MATCH (b:상여금기준)-[:해당직책구분]->(pos:직위 {직위명: '부서장(가)'})
             MATCH (b)-[:해당등급]->(ev:평가결과 {평가등급: 'EX'})
-            RETURN b.지급률 AS rate
+            RETURN b.상여금지급률 AS rate
         """,
         typeql="""
             match
@@ -183,7 +183,7 @@ DIRECT_TESTS = [
                 { $posname == "부서장(가)"; };
                 $ev isa 평가결과, has 평가등급 "EX";
                 (적용기준: $b, 해당직책구분: $pos, 해당등급: $ev) isa 상여금결정;
-                $b has 지급률 $rate;
+                $b has 상여금지급률 $rate;
         """,
         typeql_vars=[{"name": "rate", "type": "double"}],
         expected_check="exact_value",
@@ -194,11 +194,11 @@ DIRECT_TESTS = [
         description="임금피크제 2년차 지급률 확인",
         cypher="""
             MATCH (w:임금피크제기준 {적용연차: 2})
-            RETURN w.지급률 AS rate
+            RETURN w.임금피크지급률 AS rate
         """,
         typeql="""
             match
-                $w isa 임금피크제기준, has 적용연차 2, has 지급률 $rate;
+                $w isa 임금피크제기준, has 적용연차 2, has 임금피크지급률 $rate;
         """,
         typeql_vars=[{"name": "rate", "type": "double"}],
         expected_check="exact_value",
@@ -240,11 +240,11 @@ DIRECT_TESTS = [
         description="총재 본봉 연간 총액 확인",
         cypher="""
             MATCH (b:보수기준 {보수기준명: '총재 본봉'})
-            RETURN b.기본급액 AS amt
+            RETURN b.보수기본급액 AS amt
         """,
         typeql="""
             match
-                $b isa 보수기준, has 보수기준명 "총재 본봉", has 기본급액 $amt;
+                $b isa 보수기준, has 보수기준명 "총재 본봉", has 보수기본급액 $amt;
         """,
         typeql_vars=[{"name": "amt", "type": "double"}],
         expected_check="exact_value",

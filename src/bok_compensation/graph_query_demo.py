@@ -68,13 +68,13 @@ def main():
             $ppstd has 직책급액 $ppay;
 
             (적용기준: $bstd, 해당직책구분: $pos, 해당등급: $eval) isa 상여금결정;
-            $bstd has 지급률 $brate;
+            $bstd has 상여금지급률 $brate;
 
             (적용기준: $dstd, 해당직급: $grade, 해당등급: $eval) isa 연봉차등;
             $dstd has 차등액 $diff;
 
             (적용기준: $cstd, 해당직급: $grade) isa 연봉상한;
-            $cstd has 상한액 $cap;
+            $cstd has 연봉상한액 $cap;
         sort $n desc;
         limit 1;
     """

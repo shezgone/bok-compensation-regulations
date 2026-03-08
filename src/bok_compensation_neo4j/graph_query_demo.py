@@ -56,9 +56,9 @@ def main():
         MATCH (b:상여금기준)-[:해당직책구분]->(pos), (b)-[:해당등급]->(eval)
         MATCH (d:연봉차등액기준)-[:해당직급]->(grade), (d)-[:해당등급]->(eval)
         MATCH (c:연봉상한액기준)-[:해당직급]->(grade)
-        RETURN step.호봉번호 AS n, step.호봉금액 AS salary,
-               pp.직책급액 AS ppay, b.지급률 AS brate,
-               d.차등액 AS diff, c.상한액 AS cap
+         RETURN step.호봉번호 AS n, step.호봉금액 AS salary,
+             pp.직책급액 AS ppay, b.상여금지급률 AS brate,
+             d.차등액 AS diff, c.연봉상한액 AS cap
         ORDER BY n DESC
         LIMIT 1
     """

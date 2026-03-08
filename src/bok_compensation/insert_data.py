@@ -276,24 +276,24 @@ def insert_grades(driver, db):
     # 종합기획 직급 (1~6급, G1~G5)
     run_query(driver, db, """
         insert
-        $g1 isa 직급, has 직급코드 "1급", has 직급명 "1급", has 서열 1;
-        $g2 isa 직급, has 직급코드 "2급", has 직급명 "2급", has 서열 2;
-        $g3 isa 직급, has 직급코드 "3급", has 직급명 "3급", has 서열 3;
-        $g4 isa 직급, has 직급코드 "4급", has 직급명 "4급", has 서열 4;
-        $g5 isa 직급, has 직급코드 "5급", has 직급명 "5급", has 서열 5;
-        $g6 isa 직급, has 직급코드 "6급", has 직급명 "6급", has 서열 6;
-        $gg1 isa 직급, has 직급코드 "G1", has 직급명 "G1", has 서열 7;
-        $gg2 isa 직급, has 직급코드 "G2", has 직급명 "G2", has 서열 8;
-        $gg3 isa 직급, has 직급코드 "G3", has 직급명 "G3", has 서열 9;
-        $gg4 isa 직급, has 직급코드 "G4", has 직급명 "G4", has 서열 10;
-        $gg5 isa 직급, has 직급코드 "G5", has 직급명 "G5", has 서열 11;
+        $g1 isa 직급, has 직급코드 "1급", has 직급명 "1급", has 직급서열 1;
+        $g2 isa 직급, has 직급코드 "2급", has 직급명 "2급", has 직급서열 2;
+        $g3 isa 직급, has 직급코드 "3급", has 직급명 "3급", has 직급서열 3;
+        $g4 isa 직급, has 직급코드 "4급", has 직급명 "4급", has 직급서열 4;
+        $g5 isa 직급, has 직급코드 "5급", has 직급명 "5급", has 직급서열 5;
+        $g6 isa 직급, has 직급코드 "6급", has 직급명 "6급", has 직급서열 6;
+        $gg1 isa 직급, has 직급코드 "G1", has 직급명 "G1", has 직급서열 7;
+        $gg2 isa 직급, has 직급코드 "G2", has 직급명 "G2", has 직급서열 8;
+        $gg3 isa 직급, has 직급코드 "G3", has 직급명 "G3", has 직급서열 9;
+        $gg4 isa 직급, has 직급코드 "G4", has 직급명 "G4", has 직급서열 10;
+        $gg5 isa 직급, has 직급코드 "G5", has 직급명 "G5", has 직급서열 11;
     """)
     # 일반사무 / 서무 / 청원경찰용 대표 직급
     run_query(driver, db, """
         insert
-        $ga isa 직급, has 직급코드 "GA", has 직급명 "일반사무", has 서열 12;
-        $cl isa 직급, has 직급코드 "CL", has 직급명 "서무", has 서열 13;
-        $po isa 직급, has 직급코드 "PO", has 직급명 "청원경찰", has 서열 14;
+        $ga isa 직급, has 직급코드 "GA", has 직급명 "일반사무", has 직급서열 12;
+        $cl isa 직급, has 직급코드 "CL", has 직급명 "서무", has 직급서열 13;
+        $po isa 직급, has 직급코드 "PO", has 직급명 "청원경찰", has 직급서열 14;
     """)
     # 직렬분류 관계: 종합기획 ↔ 1~6급, G1~G5
     for code in ["1급", "2급", "3급", "4급", "5급", "6급",
@@ -318,16 +318,16 @@ def insert_positions(driver, db):
     """직위"""
     run_query(driver, db, """
         insert
-        $t1 isa 직위, has 직위코드 "P01", has 직위명 "부서장(가)", has 서열 1;
-        $t2 isa 직위, has 직위코드 "P02", has 직위명 "부서장(나)", has 서열 2;
-        $t3 isa 직위, has 직위코드 "P03", has 직위명 "국소속실장", has 서열 3;
-        $t4 isa 직위, has 직위코드 "P04", has 직위명 "부장", has 서열 4;
-        $t5 isa 직위, has 직위코드 "P05", has 직위명 "팀장", has 서열 5;
-        $t6 isa 직위, has 직위코드 "P06", has 직위명 "반장", has 서열 6;
-        $t7 isa 직위, has 직위코드 "P07", has 직위명 "조사역", has 서열 7;
-        $t8 isa 직위, has 직위코드 "P08", has 직위명 "주임조사역(C1)", has 서열 8;
-        $t9 isa 직위, has 직위코드 "P09", has 직위명 "조사역(C2)", has 서열 9;
-        $t10 isa 직위, has 직위코드 "P10", has 직위명 "조사역(C3)", has 서열 10;
+        $t1 isa 직위, has 직위코드 "P01", has 직위명 "부서장(가)", has 직위서열 1;
+        $t2 isa 직위, has 직위코드 "P02", has 직위명 "부서장(나)", has 직위서열 2;
+        $t3 isa 직위, has 직위코드 "P03", has 직위명 "국소속실장", has 직위서열 3;
+        $t4 isa 직위, has 직위코드 "P04", has 직위명 "부장", has 직위서열 4;
+        $t5 isa 직위, has 직위코드 "P05", has 직위명 "팀장", has 직위서열 5;
+        $t6 isa 직위, has 직위코드 "P06", has 직위명 "반장", has 직위서열 6;
+        $t7 isa 직위, has 직위코드 "P07", has 직위명 "조사역", has 직위서열 7;
+        $t8 isa 직위, has 직위코드 "P08", has 직위명 "주임조사역(C1)", has 직위서열 8;
+        $t9 isa 직위, has 직위코드 "P09", has 직위명 "조사역(C2)", has 직위서열 9;
+        $t10 isa 직위, has 직위코드 "P10", has 직위명 "조사역(C3)", has 직위서열 10;
     """)
 
 
@@ -344,7 +344,7 @@ def insert_salary_table(driver, db):
                     $h isa 호봉,
                         has 호봉번호 {hobong},
                         has 호봉금액 {amount},
-                        has 적용시작일 2025-01-01T00:00:00;
+                        has 호봉적용시작일 2025-01-01T00:00:00;
                     (소속직급: $g, 구성호봉: $h) isa 호봉체계구성;
             """)
 
@@ -361,7 +361,7 @@ def insert_position_pay(driver, db):
             insert
                 $pp isa 직책급기준, has 직책급코드 "{code}",
                     has 직책급액 {amount},
-                    has 적용시작일 2025-01-01T00:00:00,
+                    has 직책급적용시작일 2025-01-01T00:00:00,
                     has 직책급기준설명 "별표1-1 종합기획직원 직책급";
                 (적용기준: $pp, 해당직급: $g, 해당직위: $pos) isa 직책급결정;
         """)
@@ -459,7 +459,7 @@ def insert_allowances(driver, db):
     run_query(driver, db, """
         insert $ot isa 수당, has 수당코드 "OT-WORK",
             has 수당명 "시간외근무수당", has 수당유형 "비율",
-            has 지급률 1.5,
+            has 수당지급률 1.5,
             has 지급조건 "시간외근무 시 시간당 보수의 1.5배",
             has 수당설명 "제9조. 시간당보수=통상임금월지급액/209";
     """)
@@ -470,20 +470,20 @@ def insert_exec_compensation(driver, db):
     run_query(driver, db, """
         insert
         $b1 isa 보수기준, has 보수코드 "EXEC-GOV",
-            has 보수기준명 "총재 본봉", has 기본급액 336710000.0,
-            has 적용시작일 2025-01-01T00:00:00,
+            has 보수기준명 "총재 본봉", has 보수기본급액 336710000.0,
+            has 보수적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 총재";
         $b2 isa 보수기준, has 보수코드 "EXEC-VICE",
-            has 보수기준명 "위원·부총재 본봉", has 기본급액 309770000.0,
-            has 적용시작일 2025-01-01T00:00:00,
+            has 보수기준명 "위원·부총재 본봉", has 보수기본급액 309770000.0,
+            has 보수적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 위원·부총재";
         $b3 isa 보수기준, has 보수코드 "EXEC-AUDIT",
-            has 보수기준명 "감사 본봉", has 기본급액 296310000.0,
-            has 적용시작일 2025-01-01T00:00:00,
+            has 보수기준명 "감사 본봉", has 보수기본급액 296310000.0,
+            has 보수적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 감사";
         $b4 isa 보수기준, has 보수코드 "EXEC-SVICE",
-            has 보수기준명 "부총재보 본봉", has 기본급액 249190000.0,
-            has 적용시작일 2025-01-01T00:00:00,
+            has 보수기준명 "부총재보 본봉", has 보수기본급액 249190000.0,
+            has 보수적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 부총재보";
     """)
 
@@ -524,7 +524,7 @@ def insert_bonus_standards(driver, db):
             insert
                 $b isa 상여금기준, has 상여금코드 "{code}",
                     has 상여유형 "평가", has 상여금기준명 "평가상여금",
-                    has 지급률 {rate},
+                    has 상여금지급률 {rate},
                     has 상여금기준설명 "별표1-2 평가상여금지급률표";
                 (적용기준: $b, 해당직책구분: $pos, 해당등급: $ev) isa 상여금결정;
         """)
@@ -542,7 +542,7 @@ def insert_salary_diff(driver, db):
             insert
                 $d isa 연봉차등액기준, has 연봉차등액코드 "{code}",
                     has 차등액 {diff},
-                    has 적용시작일 2025-01-01T00:00:00,
+                    has 연봉차등적용시작일 2025-01-01T00:00:00,
                     has 연봉차등기준설명 "별표7 연봉제본봉 차등액";
                 (적용기준: $d, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
         """)
@@ -557,8 +557,8 @@ def insert_salary_cap(driver, db):
             match $g isa 직급, has 직급코드 "{grade_code}";
             insert
                 $c isa 연봉상한액기준, has 연봉상한액코드 "{code}",
-                    has 상한액 {cap},
-                    has 적용시작일 2025-01-01T00:00:00,
+                    has 연봉상한액 {cap},
+                    has 연봉상한적용시작일 2025-01-01T00:00:00,
                     has 연봉상한기준설명 "별표8 연봉제본봉 상한액";
                 (적용기준: $c, 해당직급: $g) isa 연봉상한;
         """)
@@ -570,7 +570,7 @@ def insert_wage_peak(driver, db):
         code = f"WP-Y{year}"
         run_query(driver, db, f"""
             insert $w isa 임금피크제기준, has 임금피크제코드 "{code}",
-                has 적용연차 {year}, has 지급률 {rate},
+                has 적용연차 {year}, has 임금피크지급률 {rate},
                 has 임금피크제설명 "별표9 임금피크제 적용연차 {year}년차 기본급지급률 {int(rate*100)}%";
         """)
 
@@ -585,9 +585,9 @@ def insert_overseas_salary(driver, db):
                 $o isa 국외본봉기준, has 국외본봉코드 "{code}",
                     has 국가코드 "{country_code}",
                     has 국가명 "{country_name}",
-                    has 기본급액 {amount},
+                    has 국외기본급액 {amount},
                     has 통화단위 "{currency}",
-                    has 적용시작일 2025-01-01T00:00:00,
+                    has 국외본봉적용시작일 2025-01-01T00:00:00,
                     has 국외본봉기준설명 "별표1-5 해외직원 국외본봉";
                 (적용기준: $o, 해당직급: $g) isa 국외본봉결정;
         """)

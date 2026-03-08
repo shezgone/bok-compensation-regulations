@@ -6,6 +6,27 @@
 
 define
 
+
+# 분리된 실수형/정수형/날짜형 속성
+attribute 보수기본급액, value double;
+attribute 국외기본급액, value double;
+attribute 수당상한액, value double;
+attribute 연봉상한액, value double;
+attribute 직급서열, value integer;
+attribute 직위서열, value integer;
+attribute 호봉적용시작일, value datetime;
+attribute 보수적용시작일, value datetime;
+attribute 직책급적용시작일, value datetime;
+attribute 연봉차등적용시작일, value datetime;
+attribute 연봉상한적용시작일, value datetime;
+attribute 국외본봉적용시작일, value datetime;
+attribute 호봉적용종료일, value datetime;
+attribute 보수적용종료일, value datetime;
+attribute 직책급적용종료일, value datetime;
+attribute 수당지급률, value double;
+attribute 상여금지급률, value double;
+attribute 임금피크지급률, value double;
+
 # ============================================================
 # 1. 속성 타입 (Attribute Types)
 # ============================================================
@@ -14,7 +35,6 @@ define
 
 attribute 직책급코드, value string;
 attribute 보수코드, value string;
-attribute 근무형태코드, value string;
 attribute 상여금코드, value string;
 attribute 연봉차등액코드, value string;
 attribute 연봉상한액코드, value string;
@@ -39,8 +59,6 @@ attribute 국외본봉기준설명, value string;
 attribute 초임호봉기준설명, value string;
 attribute 시행일,         value datetime;
 attribute 개정일,         value datetime;
-attribute 적용시작일,     value datetime;
-attribute 적용종료일,     value datetime;
 attribute 활성여부,       value boolean;
 
 # --- 규정 관련 속성 ---
@@ -60,15 +78,11 @@ attribute 직급명,         value string;
 attribute 직급코드,       value string;
 attribute 직위명,         value string;
 attribute 직위코드,       value string;
-attribute 서열,           value integer;
 
 # --- 보수 관련 속성 ---
-attribute 기본급액,       value double;
 attribute 수당액,         value double;
-attribute 지급률,         value double;
 attribute 호봉번호,       value integer;
 attribute 호봉금액,       value double;
-attribute 지급기준일,     value datetime;
 attribute 통화단위,       value string;
 attribute 직책급액,       value double;    # (NEW) 별표1-1
 attribute 차등액,         value double;    # (NEW) 별표7
@@ -79,7 +93,6 @@ attribute 수당유형,       value string;
 attribute 수당명,         value string;
 attribute 수당코드,       value string;
 attribute 지급조건,       value string;
-attribute 상한액,         value double;
 attribute 하한액,         value double;
 
 # --- 평가/승급 관련 속성 ---
@@ -137,7 +150,7 @@ entity 직렬,
 entity 직급,
     owns 직급코드 @key,
     owns 직급명,
-    owns 서열,
+    owns 직급서열,
     plays 직렬분류:분류직급,
     plays 호봉체계구성:소속직급,
     plays 직책급결정:해당직급,
@@ -148,7 +161,7 @@ entity 직급,
 entity 직위,
     owns 직위코드 @key,
     owns 직위명,
-    owns 서열,
+    owns 직위서열,
     plays 직책급결정:해당직위,
     plays 상여금결정:해당직책구분;
 
@@ -156,16 +169,16 @@ entity 직위,
 entity 호봉,
     owns 호봉번호,
     owns 호봉금액,
-    owns 적용시작일,
-    owns 적용종료일,
+    owns 호봉적용시작일,
+    owns 호봉적용종료일,
     plays 호봉체계구성:구성호봉;
 
 entity 보수기준,
     owns 보수코드 @key,
     owns 보수기준명,
-    owns 기본급액,
-    owns 적용시작일,
-    owns 적용종료일,
+    owns 보수기본급액,
+    owns 보수적용시작일,
+    owns 보수적용종료일,
     owns 보수기준설명;
 
 entity 수당,
@@ -173,9 +186,9 @@ entity 수당,
     owns 수당명,
     owns 수당유형,
     owns 수당액,
-    owns 지급률,
+    owns 수당지급률,
     owns 지급조건,
-    owns 상한액,
+    owns 수당상한액,
     owns 하한액,
     owns 수당설명;
 
@@ -183,8 +196,8 @@ entity 수당,
 entity 직책급기준,
     owns 직책급코드 @key,
     owns 직책급액,
-    owns 적용시작일,
-    owns 적용종료일,
+    owns 직책급적용시작일,
+    owns 직책급적용종료일,
     owns 직책급기준설명,
     plays 직책급결정:적용기준;
 
@@ -194,7 +207,7 @@ entity 상여금기준,
     owns 상여유형,
     owns 상여금기준명,
     owns 연간지급률,
-    owns 지급률,
+    owns 상여금지급률,
     owns 상여금기준설명,
     plays 상여금결정:적용기준;
 
@@ -202,14 +215,14 @@ entity 상여금기준,
 entity 연봉차등액기준,
     owns 연봉차등액코드 @key,
     owns 차등액,
-    owns 적용시작일,
+    owns 연봉차등적용시작일,
     owns 연봉차등기준설명,
     plays 연봉차등:적용기준;
 
 entity 연봉상한액기준,
     owns 연봉상한액코드 @key,
-    owns 상한액,
-    owns 적용시작일,
+    owns 연봉상한액,
+    owns 연봉상한적용시작일,
     owns 연봉상한기준설명,
     plays 연봉상한:적용기준;
 
@@ -217,7 +230,7 @@ entity 연봉상한액기준,
 entity 임금피크제기준,
     owns 임금피크제코드 @key,
     owns 적용연차,
-    owns 지급률,
+    owns 임금피크지급률,
     owns 임금피크제설명;
 
 # --- 해외 (NEW: 별표1-5) ---
@@ -225,9 +238,9 @@ entity 국외본봉기준,
     owns 국외본봉코드 @key,
     owns 국가코드,
     owns 국가명,
-    owns 기본급액,
+    owns 국외기본급액,
     owns 통화단위,
-    owns 적용시작일,
+    owns 국외본봉적용시작일,
     owns 국외본봉기준설명,
     plays 국외본봉결정:적용기준;
 

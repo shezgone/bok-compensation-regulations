@@ -217,7 +217,7 @@ def run_neo4j_validation():
         for grade, expected_cap in EXPECTED_SALARY_CAP:
             r = s.run("""
                 MATCH (c:연봉상한액기준)-[:해당직급]->(g:직급 {직급코드: $grade})
-                RETURN c.상한액 AS cap
+                RETURN c.연봉상한액 AS cap
             """, grade=grade)
             rec = r.single()
             if rec is None:
@@ -234,7 +234,7 @@ def run_neo4j_validation():
         for year, expected_rate in EXPECTED_WAGE_PEAK:
             r = s.run("""
                 MATCH (w:임금피크제기준 {적용연차: $year})
-                RETURN w.지급률 AS rate
+                RETURN w.임금피크지급률 AS rate
             """, year=year)
             rec = r.single()
             if rec is None:
@@ -277,7 +277,7 @@ def run_neo4j_validation():
             r = s.run("""
                 MATCH (b:상여금기준)-[:해당직책구분]->(pos:직위 {직위명: $pos})
                 MATCH (b)-[:해당등급]->(ev:평가결과 {평가등급: $eval})
-                RETURN b.지급률 AS rate
+                RETURN b.상여금지급률 AS rate
             """, pos=pos_name, eval=eval_g)
             rec = r.single()
             if rec is None:
@@ -294,7 +294,7 @@ def run_neo4j_validation():
         for country, grade, expected_amt, expected_cur in EXPECTED_OVERSEAS:
             r = s.run("""
                 MATCH (o:국외본봉기준 {국가명: $country})-[:해당직급]->(g:직급 {직급코드: $grade})
-                RETURN o.기본급액 AS amt, o.통화단위 AS cur
+                RETURN o.국외기본급액 AS amt, o.통화단위 AS cur
             """, country=country, grade=grade)
             rec = r.single()
             if rec is None:
@@ -312,7 +312,7 @@ def run_neo4j_validation():
         for name, expected_amt in EXPECTED_EXEC:
             r = s.run("""
                 MATCH (b:보수기준 {보수기준명: $name})
-                RETURN b.기본급액 AS amt
+                RETURN b.보수기본급액 AS amt
             """, name=name)
             rec = r.single()
             if rec is None:
@@ -432,7 +432,7 @@ def run_typedb_validation():
             match
                 $g isa 직급, has 직급코드 "{grade}";
                 (적용기준: $c, 해당직급: $g) isa 연봉상한;
-                $c has 상한액 $cap;
+                $c has 연봉상한액 $cap;
         """)
         if not rows:
             results.append(TestResult("연봉상한", f"{grade}", False, "데이터 없음"))
@@ -448,7 +448,7 @@ def run_typedb_validation():
     for year, expected_rate in EXPECTED_WAGE_PEAK:
         rows = query(f"""
             match
-                $w isa 임금피크제기준, has 적용연차 {year}, has 지급률 $rate;
+                $w isa 임금피크제기준, has 적용연차 {year}, has 임금피크지급률 $rate;
         """)
         if not rows:
             results.append(TestResult("임금피크제", f"{year}년차", False, "데이터 없음"))
@@ -492,7 +492,7 @@ def run_typedb_validation():
     for name, expected_amt in EXPECTED_EXEC:
         rows = query(f"""
             match
-                $b isa 보수기준, has 보수기준명 "{name}", has 기본급액 $amt;
+                $b isa 보수기준, has 보수기준명 "{name}", has 보수기본급액 $amt;
         """)
         if not rows:
             results.append(TestResult("보수기준", name, False, "데이터 없음"))
@@ -512,7 +512,7 @@ def run_typedb_validation():
                 {{ $posname == "{pos_name}"; }};
                 $ev isa 평가결과, has 평가등급 "{eval_g}";
                 (적용기준: $b, 해당직책구분: $pos, 해당등급: $ev) isa 상여금결정;
-                $b has 지급률 $rate;
+                $b has 상여금지급률 $rate;
         """)
         if not rows:
             results.append(TestResult("상여금", f"{pos_name}+{eval_g}", False, "데이터 없음"))
@@ -530,7 +530,7 @@ def run_typedb_validation():
             match
                 $g isa 직급, has 직급코드 "{grade}";
                 (적용기준: $os, 해당직급: $g) isa 국외본봉결정;
-                $os has 국가명 "{country}", has 기본급액 $amt, has 통화단위 $cur;
+                $os has 국가명 "{country}", has 국외기본급액 $amt, has 통화단위 $cur;
         """)
         if not rows:
             results.append(TestResult("국외본봉", f"{country}+{grade}", False, "데이터 없음"))
