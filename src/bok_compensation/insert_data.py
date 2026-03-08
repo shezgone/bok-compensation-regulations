@@ -359,8 +359,7 @@ def insert_position_pay(driver, db):
                 $pos isa 직위, has 직위코드 "{pos_code}";
                 $g isa 직급, has 직급코드 "{grade_code}";
             insert
-                $pp isa 직책급기준,
-                    has 코드 "{code}",
+                $pp isa 직책급기준, has 직책급코드 "{code}",
                     has 직책급액 {amount},
                     has 적용시작일 2025-01-01T00:00:00,
                     has 직책급기준설명 "별표1-1 종합기획직원 직책급";
@@ -470,19 +469,19 @@ def insert_exec_compensation(driver, db):
     """보수기준 (별표1 1. 위원/집행간부/감사)"""
     run_query(driver, db, """
         insert
-        $b1 isa 보수기준, has 코드 "EXEC-GOV",
+        $b1 isa 보수기준, has 보수코드 "EXEC-GOV",
             has 명칭 "총재 본봉", has 기본급액 336710000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 총재";
-        $b2 isa 보수기준, has 코드 "EXEC-VICE",
+        $b2 isa 보수기준, has 보수코드 "EXEC-VICE",
             has 명칭 "위원·부총재 본봉", has 기본급액 309770000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 위원·부총재";
-        $b3 isa 보수기준, has 코드 "EXEC-AUDIT",
+        $b3 isa 보수기준, has 보수코드 "EXEC-AUDIT",
             has 명칭 "감사 본봉", has 기본급액 296310000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 감사";
-        $b4 isa 보수기준, has 코드 "EXEC-SVICE",
+        $b4 isa 보수기준, has 보수코드 "EXEC-SVICE",
             has 명칭 "부총재보 본봉", has 기본급액 249190000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 부총재보";
@@ -510,7 +509,7 @@ def insert_bonus_standards(driver, db):
     """상여금기준 (NEW: 제12조, 별표1-2) + 상여금결정 관계"""
     # 정기상여금 (단독 엔티티 — 직위/평가 무관)
     run_query(driver, db, """
-        insert $b isa 상여금기준, has 코드 "BONUS-REG",
+        insert $b isa 상여금기준, has 상여금코드 "BONUS-REG",
             has 상여유형 "정기", has 명칭 "정기상여금",
             has 연간지급률 3.8,
             has 상여금기준설명 "연간 380%. 6·12월 각 150%, 설·추석 각 40%";
@@ -523,7 +522,7 @@ def insert_bonus_standards(driver, db):
                 $pos isa 직위, has 직위코드 "{pos_code}";
                 $ev isa 평가결과, has 평가등급 "{eval_grade}";
             insert
-                $b isa 상여금기준, has 코드 "{code}",
+                $b isa 상여금기준, has 상여금코드 "{code}",
                     has 상여유형 "평가", has 명칭 "평가상여금",
                     has 지급률 {rate},
                     has 상여금기준설명 "별표1-2 평가상여금지급률표";
@@ -541,7 +540,7 @@ def insert_salary_diff(driver, db):
                 $g isa 직급, has 직급코드 "{grade_code}";
                 $ev isa 평가결과, has 평가등급 "{eval_grade}";
             insert
-                $d isa 연봉차등액기준, has 코드 "{code}",
+                $d isa 연봉차등액기준, has 연봉차등액코드 "{code}",
                     has 차등액 {diff},
                     has 적용시작일 2025-01-01T00:00:00,
                     has 연봉차등기준설명 "별표7 연봉제본봉 차등액";
@@ -557,7 +556,7 @@ def insert_salary_cap(driver, db):
         run_query(driver, db, f"""
             match $g isa 직급, has 직급코드 "{grade_code}";
             insert
-                $c isa 연봉상한액기준, has 코드 "{code}",
+                $c isa 연봉상한액기준, has 연봉상한액코드 "{code}",
                     has 상한액 {cap},
                     has 적용시작일 2025-01-01T00:00:00,
                     has 연봉상한기준설명 "별표8 연봉제본봉 상한액";
@@ -570,7 +569,7 @@ def insert_wage_peak(driver, db):
     for year, rate in WAGE_PEAK_TABLE:
         code = f"WP-Y{year}"
         run_query(driver, db, f"""
-            insert $w isa 임금피크제기준, has 코드 "{code}",
+            insert $w isa 임금피크제기준, has 임금피크제코드 "{code}",
                 has 적용연차 {year}, has 지급률 {rate},
                 has 임금피크제설명 "별표9 임금피크제 적용연차 {year}년차 기본급지급률 {int(rate*100)}%";
         """)
@@ -583,7 +582,7 @@ def insert_overseas_salary(driver, db):
         run_query(driver, db, f"""
             match $g isa 직급, has 직급코드 "{grade_code}";
             insert
-                $o isa 국외본봉기준, has 코드 "{code}",
+                $o isa 국외본봉기준, has 국외본봉코드 "{code}",
                     has 국가코드 "{country_code}",
                     has 국가명 "{country_name}",
                     has 기본급액 {amount},
@@ -610,7 +609,7 @@ def insert_starting_step(driver, db):
         run_query(driver, db, f"""
             match $ct isa 직렬, has 직렬코드 "{ct_code}";
             insert
-                $s isa 초임호봉기준, has 코드 "{code}",
+                $s isa 초임호봉기준, has 초임호봉코드 "{code}",
                     has 초임호봉번호 {hobong},
                     has 초임호봉기준설명 "별표2 {desc}";
                 (적용기준: $s, 대상직렬: $ct) isa 초임호봉결정;

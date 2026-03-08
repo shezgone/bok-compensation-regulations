@@ -315,7 +315,7 @@ def insert_position_pay(session):
         session.run("""
             MATCH (pos:직위 {직위코드: $pos_code})
             MATCH (g:직급 {직급코드: $grade_code})
-            CREATE (pp:직책급기준 {코드: $code, 직책급액: $amount,
+            CREATE (pp:직책급기준 {직책급코드: $code, 직책급액: $amount,
                     적용시작일: date('2025-01-01'), 설명: '별표1-1 종합기획직원 직책급'})
             CREATE (pp)-[:해당직급]->(g)
             CREATE (pp)-[:해당직위]->(pos)
@@ -378,7 +378,7 @@ def insert_exec_compensation(session):
     ]
     for code, name, amount, desc in execs:
         session.run("""
-            CREATE (:보수기준 {코드: $code, 명칭: $name, 기본급액: $amount,
+            CREATE (:보수기준 {보수코드: $code, 명칭: $name, 기본급액: $amount,
                     적용시작일: date('2025-01-01'), 설명: $desc})
         """, code=code, name=name, amount=amount, desc=desc)
 
@@ -403,7 +403,7 @@ def insert_bonus_standards(session):
     """상여금기준 (제12조, 별표1-2) + 상여금결정 관계"""
     # 정기상여금
     session.run("""
-        CREATE (:상여금기준 {코드: 'BONUS-REG', 상여유형: '정기', 명칭: '정기상여금',
+        CREATE (:상여금기준 {상여금코드: 'BONUS-REG', 상여유형: '정기', 명칭: '정기상여금',
                 연간지급률: 3.8, 설명: '연간 380%. 6·12월 각 150%, 설·추석 각 40%'})
     """)
     # 평가상여금
@@ -412,7 +412,7 @@ def insert_bonus_standards(session):
         session.run("""
             MATCH (pos:직위 {직위코드: $pos_code})
             MATCH (ev:평가결과 {평가등급: $eval_grade})
-            CREATE (b:상여금기준 {코드: $code, 상여유형: '평가', 명칭: '평가상여금',
+            CREATE (b:상여금기준 {상여금코드: $code, 상여유형: '평가', 명칭: '평가상여금',
                     지급률: $rate, 설명: '별표1-2 평가상여금지급률표'})
             CREATE (b)-[:해당직책구분]->(pos)
             CREATE (b)-[:해당등급]->(ev)
@@ -427,7 +427,7 @@ def insert_salary_diff(session):
         session.run("""
             MATCH (g:직급 {직급코드: $grade_code})
             MATCH (ev:평가결과 {평가등급: $eval_grade})
-            CREATE (d:연봉차등액기준 {코드: $code, 차등액: $diff,
+            CREATE (d:연봉차등액기준 {연봉차등액코드: $code, 차등액: $diff,
                     적용시작일: date('2025-01-01'), 설명: '별표7 연봉제본봉 차등액'})
             CREATE (d)-[:해당직급]->(g)
             CREATE (d)-[:해당등급]->(ev)
@@ -441,7 +441,7 @@ def insert_salary_cap(session):
         cap = float(cap_1000 * 1000)
         session.run("""
             MATCH (g:직급 {직급코드: $grade_code})
-            CREATE (c:연봉상한액기준 {코드: $code, 상한액: $cap,
+            CREATE (c:연봉상한액기준 {연봉상한액코드: $code, 상한액: $cap,
                     적용시작일: date('2025-01-01'), 설명: '별표8 연봉제본봉 상한액'})
             CREATE (c)-[:해당직급]->(g)
         """, grade_code=grade_code, code=code, cap=cap)
@@ -452,7 +452,7 @@ def insert_wage_peak(session):
     for year, rate in WAGE_PEAK_TABLE:
         code = f"WP-Y{year}"
         session.run("""
-            CREATE (:임금피크제기준 {코드: $code, 적용연차: $year, 지급률: $rate,
+            CREATE (:임금피크제기준 {임금피크제코드: $code, 적용연차: $year, 지급률: $rate,
                     설명: $desc})
         """, code=code, year=year, rate=rate,
              desc=f"별표9 임금피크제 적용연차 {year}년차 기본급지급률 {int(rate*100)}%")
@@ -464,7 +464,7 @@ def insert_overseas_salary(session):
         code = f"OVS-{country_code}-{grade_code}"
         session.run("""
             MATCH (g:직급 {직급코드: $grade_code})
-            CREATE (o:국외본봉기준 {코드: $code, 국가코드: $cc, 국가명: $cn,
+            CREATE (o:국외본봉기준 {국외본봉코드: $code, 국가코드: $cc, 국가명: $cn,
                     기본급액: $amount, 통화단위: $cur,
                     적용시작일: date('2025-01-01'), 설명: '별표1-5 해외직원 국외본봉'})
             CREATE (o)-[:해당직급]->(g)
@@ -487,7 +487,7 @@ def insert_starting_step(session):
         code = f"START-{st_code}"
         session.run("""
             MATCH (ct:직렬 {직렬코드: $ct_code})
-            CREATE (s:초임호봉기준 {코드: $code, 초임호봉번호: $hobong,
+            CREATE (s:초임호봉기준 {초임호봉코드: $code, 초임호봉번호: $hobong,
                     설명: $desc_full})
             CREATE (s)-[:대상직렬]->(ct)
         """, ct_code=ct_code, code=code, hobong=hobong,

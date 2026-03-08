@@ -12,7 +12,6 @@ define
 
 # --- 공통 속성 ---
 attribute 명칭,           value string;
-attribute 코드,           value string;
 attribute 규정설명, value string;
 attribute 개정이력설명, value string;
 attribute 직렬설명, value string;
@@ -149,7 +148,7 @@ entity 호봉,
     plays 호봉체계구성:구성호봉;
 
 entity 보수기준,
-    owns 코드 @key,
+    owns 보수코드 @key,
     owns 명칭,
     owns 기본급액,
     owns 적용시작일,
@@ -169,7 +168,7 @@ entity 수당,
 
 # --- 직책급 (NEW: 별표1-1) ---
 entity 직책급기준,
-    owns 코드 @key,
+    owns 직책급코드 @key,
     owns 직책급액,
     owns 적용시작일,
     owns 적용종료일,
@@ -178,7 +177,7 @@ entity 직책급기준,
 
 # --- 상여금 (NEW: 제12조, 별표1-2) ---
 entity 상여금기준,
-    owns 코드 @key,
+    owns 상여금코드 @key,
     owns 상여유형,
     owns 명칭,
     owns 연간지급률,
@@ -188,14 +187,14 @@ entity 상여금기준,
 
 # --- 연봉제 (NEW: 별표7, 별표8) ---
 entity 연봉차등액기준,
-    owns 코드 @key,
+    owns 연봉차등액코드 @key,
     owns 차등액,
     owns 적용시작일,
     owns 연봉차등기준설명,
     plays 연봉차등:적용기준;
 
 entity 연봉상한액기준,
-    owns 코드 @key,
+    owns 연봉상한액코드 @key,
     owns 상한액,
     owns 적용시작일,
     owns 연봉상한기준설명,
@@ -203,14 +202,14 @@ entity 연봉상한액기준,
 
 # --- 임금피크제 (NEW: 별표9) ---
 entity 임금피크제기준,
-    owns 코드 @key,
+    owns 임금피크제코드 @key,
     owns 적용연차,
     owns 지급률,
     owns 임금피크제설명;
 
 # --- 해외 (NEW: 별표1-5) ---
 entity 국외본봉기준,
-    owns 코드 @key,
+    owns 국외본봉코드 @key,
     owns 국가코드,
     owns 국가명,
     owns 기본급액,
@@ -221,7 +220,7 @@ entity 국외본봉기준,
 
 # --- 초임호봉 (NEW: 별표2) ---
 entity 초임호봉기준,
-    owns 코드 @key,
+    owns 초임호봉코드 @key,
     owns 초임호봉번호,
     owns 초임호봉기준설명,
     plays 초임호봉결정:적용기준;
