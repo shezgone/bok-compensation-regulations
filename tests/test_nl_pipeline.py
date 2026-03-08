@@ -116,7 +116,7 @@ DIRECT_TESTS = [
             match
                 $s isa 직렬, has 직렬명 "종합기획직원";
                 (대상직렬: $s, 적용기준: $std) isa 초임호봉결정;
-                $std has 초임호봉번호 $n, has 설명 $desc;
+                $std has 초임호봉번호 $n, has 초임호봉기준설명 $desc;
                 $desc contains "5급";
                 $g isa 직급, has 직급코드 "5급";
                 (소속직급: $g, 구성호봉: $step) isa 호봉체계구성;

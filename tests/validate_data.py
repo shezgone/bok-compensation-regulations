@@ -467,7 +467,7 @@ def run_typedb_validation():
                 match
                     $ct isa 직렬, has 직렬명 "{track_name}";
                     (대상직렬: $ct, 적용기준: $std) isa 초임호봉결정;
-                    $std has 초임호봉번호 $n, has 설명 $desc;
+                    $std has 초임호봉번호 $n, has 초임호봉기준설명 $desc;
                     $desc contains "{grade_hint}";
             """)
         else:

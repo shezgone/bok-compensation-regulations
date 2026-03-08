@@ -13,7 +13,18 @@ define
 # --- 공통 속성 ---
 attribute 명칭,           value string;
 attribute 코드,           value string;
-attribute 설명,           value string;
+attribute 규정설명, value string;
+attribute 개정이력설명, value string;
+attribute 직렬설명, value string;
+attribute 보수기준설명, value string;
+attribute 수당설명, value string;
+attribute 직책급기준설명, value string;
+attribute 상여금기준설명, value string;
+attribute 연봉차등기준설명, value string;
+attribute 연봉상한기준설명, value string;
+attribute 임금피크제설명, value string;
+attribute 국외본봉기준설명, value string;
+attribute 초임호봉기준설명, value string;
 attribute 시행일,         value datetime;
 attribute 개정일,         value datetime;
 attribute 적용시작일,     value datetime;
@@ -84,7 +95,7 @@ attribute 국가명,         value string;
 entity 규정,
     owns 규정번호 @key,
     owns 명칭,
-    owns 설명,
+    owns 규정설명,
     owns 시행일,
     owns 활성여부,
     plays 규정구성:상위규정,
@@ -100,14 +111,14 @@ entity 조문,
 
 entity 개정이력,
     owns 개정일,
-    owns 설명,
+    owns 개정이력설명,
     plays 규정개정:이력;
 
 # --- 인사 ---
 entity 직렬,
     owns 직렬코드 @key,
     owns 직렬명,
-    owns 설명,
+    owns 직렬설명,
     plays 직렬분류:분류직렬,
     plays 초임호봉결정:대상직렬;
 
@@ -143,7 +154,7 @@ entity 보수기준,
     owns 기본급액,
     owns 적용시작일,
     owns 적용종료일,
-    owns 설명;
+    owns 보수기준설명;
 
 entity 수당,
     owns 수당코드 @key,
@@ -154,7 +165,7 @@ entity 수당,
     owns 지급조건,
     owns 상한액,
     owns 하한액,
-    owns 설명;
+    owns 수당설명;
 
 # --- 직책급 (NEW: 별표1-1) ---
 entity 직책급기준,
@@ -162,7 +173,7 @@ entity 직책급기준,
     owns 직책급액,
     owns 적용시작일,
     owns 적용종료일,
-    owns 설명,
+    owns 직책급기준설명,
     plays 직책급결정:적용기준;
 
 # --- 상여금 (NEW: 제12조, 별표1-2) ---
@@ -172,7 +183,7 @@ entity 상여금기준,
     owns 명칭,
     owns 연간지급률,
     owns 지급률,
-    owns 설명,
+    owns 상여금기준설명,
     plays 상여금결정:적용기준;
 
 # --- 연봉제 (NEW: 별표7, 별표8) ---
@@ -180,14 +191,14 @@ entity 연봉차등액기준,
     owns 코드 @key,
     owns 차등액,
     owns 적용시작일,
-    owns 설명,
+    owns 연봉차등기준설명,
     plays 연봉차등:적용기준;
 
 entity 연봉상한액기준,
     owns 코드 @key,
     owns 상한액,
     owns 적용시작일,
-    owns 설명,
+    owns 연봉상한기준설명,
     plays 연봉상한:적용기준;
 
 # --- 임금피크제 (NEW: 별표9) ---
@@ -195,7 +206,7 @@ entity 임금피크제기준,
     owns 코드 @key,
     owns 적용연차,
     owns 지급률,
-    owns 설명;
+    owns 임금피크제설명;
 
 # --- 해외 (NEW: 별표1-5) ---
 entity 국외본봉기준,
@@ -205,14 +216,14 @@ entity 국외본봉기준,
     owns 기본급액,
     owns 통화단위,
     owns 적용시작일,
-    owns 설명,
+    owns 국외본봉기준설명,
     plays 국외본봉결정:적용기준;
 
 # --- 초임호봉 (NEW: 별표2) ---
 entity 초임호봉기준,
     owns 코드 @key,
     owns 초임호봉번호,
-    owns 설명,
+    owns 초임호봉기준설명,
     plays 초임호봉결정:적용기준;
 
 # --- 평가 ---

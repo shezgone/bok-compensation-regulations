@@ -52,7 +52,7 @@ def main():
             # 3. 수당 유형별 조회
             run_query(session, "수당 목록", """
                 match $a isa 수당, has 수당명 $name, has 수당유형 $type;
-                fetch $a: 수당명, 수당유형, 설명;
+                fetch $a: 수당명, 수당유형, 수당설명;
             """)
 
             # 4. 호봉 금액 조회
@@ -78,7 +78,7 @@ def main():
             # 7. 근무형태 조회
             run_query(session, "근무형태", """
                 match $w isa 근무형태, has 근무형태명 $name;
-                fetch $w: 근무형태명, 근무시간, 설명;
+                fetch $w: 근무형태명, 근무시간, 보수기준설명;
             """)
 
     print(f"\n{'=' * 60}")
