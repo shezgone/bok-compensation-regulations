@@ -10,6 +10,8 @@ TypeDB 3.x + Neo4j 듀얼 그래프 DB 기반 Bank of Korea compensation regulat
 
 👉 [Neo4j 대응 다이어그램 보기](docs/neo4j_schema_diagram.md)
 
+👉 [유사 프로젝트 초기 세팅 프롬프트 보기](docs/project_bootstrap_prompt.md)
+
 ```mermaid
 flowchart TD
   classDef entity fill:#1a365d,stroke:#63b3ed,stroke-width:2px,color:#ffffff;
