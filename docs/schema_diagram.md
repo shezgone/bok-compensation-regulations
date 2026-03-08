@@ -43,22 +43,24 @@ flowchart TD
     %% --------------------------------
     subgraph 보수_체계["💰 기준 표 (Tables & Matrix)"]
         direction TB
-        PayStep["호봉\n(별표 1: 본봉표)"]:::entity
+        PayStep["호봉\n(별표 1: 일반직 본봉표)"]:::entity
+        BasePay["보수기준\n(별표 1: 임원 본봉표)"]:::entity
         InitStepStd["초임호봉기준\n(별표 2)"]:::entity
-        Allowance["수당\n(별표 3)"]:::entity
         
+        Allowance["수당\n(별표 3)"]:::entity
         PosPayStd["직책급기준\n(별표 1-1)"]:::entity
         BonusStd["상여금기준\n(별표 1-2)"]:::entity
-        OverseasStd["국외본봉기준\n(별표 1-5)"]:::entity
         
+        OverseasStd["국외본봉기준\n(별표 1-5)"]:::entity
         SalDiffStd["연봉차등액기준\n(별표 7)"]:::entity
         SalCapStd["연봉상한액기준\n(별표 8)"]:::entity
+        
         WagePeakStd["임금피크제기준\n(별표 9)"]:::entity
 
         %% 가로로 너무 퍼지지 않게 세로 정렬 유도
-        PayStep ~~~ PosPayStd ~~~ SalDiffStd
+        PayStep ~~~ Allowance ~~~ OverseasStd ~~~ WagePeakStd
+        BasePay ~~~ PosPayStd ~~~ SalDiffStd
         InitStepStd ~~~ BonusStd ~~~ SalCapStd
-        Allowance ~~~ OverseasStd ~~~ WagePeakStd
     end
 
     %% 서브그래프 간의 수직적 흐름 유도 (보이지 않는 선)
