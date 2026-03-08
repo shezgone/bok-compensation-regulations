@@ -182,7 +182,7 @@ def insert_regulation(driver, db):
     run_query(driver, db, """
         insert $reg isa 규정,
             has 규정번호 "BOK-COMP-2025",
-            has 명칭 "보수규정",
+            has 규정명 "보수규정",
             has 규정설명 "한국은행법과 한국은행정관에 따라 금융통화위원회 위원, 집행간부, 감사 및 직원의 보수 및 상여금에 관한 사항을 규정",
             has 시행일 1998-04-16T00:00:00,
             has 활성여부 true;
@@ -470,19 +470,19 @@ def insert_exec_compensation(driver, db):
     run_query(driver, db, """
         insert
         $b1 isa 보수기준, has 보수코드 "EXEC-GOV",
-            has 명칭 "총재 본봉", has 기본급액 336710000.0,
+            has 보수기준명 "총재 본봉", has 기본급액 336710000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 총재";
         $b2 isa 보수기준, has 보수코드 "EXEC-VICE",
-            has 명칭 "위원·부총재 본봉", has 기본급액 309770000.0,
+            has 보수기준명 "위원·부총재 본봉", has 기본급액 309770000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 위원·부총재";
         $b3 isa 보수기준, has 보수코드 "EXEC-AUDIT",
-            has 명칭 "감사 본봉", has 기본급액 296310000.0,
+            has 보수기준명 "감사 본봉", has 기본급액 296310000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 감사";
         $b4 isa 보수기준, has 보수코드 "EXEC-SVICE",
-            has 명칭 "부총재보 본봉", has 기본급액 249190000.0,
+            has 보수기준명 "부총재보 본봉", has 기본급액 249190000.0,
             has 적용시작일 2025-01-01T00:00:00,
             has 보수기준설명 "별표1 1. 연간총액 - 부총재보";
     """)
@@ -510,7 +510,7 @@ def insert_bonus_standards(driver, db):
     # 정기상여금 (단독 엔티티 — 직위/평가 무관)
     run_query(driver, db, """
         insert $b isa 상여금기준, has 상여금코드 "BONUS-REG",
-            has 상여유형 "정기", has 명칭 "정기상여금",
+            has 상여유형 "정기", has 상여금기준명 "정기상여금",
             has 연간지급률 3.8,
             has 상여금기준설명 "연간 380%. 6·12월 각 150%, 설·추석 각 40%";
     """)
@@ -523,7 +523,7 @@ def insert_bonus_standards(driver, db):
                 $ev isa 평가결과, has 평가등급 "{eval_grade}";
             insert
                 $b isa 상여금기준, has 상여금코드 "{code}",
-                    has 상여유형 "평가", has 명칭 "평가상여금",
+                    has 상여유형 "평가", has 상여금기준명 "평가상여금",
                     has 지급률 {rate},
                     has 상여금기준설명 "별표1-2 평가상여금지급률표";
                 (적용기준: $b, 해당직책구분: $pos, 해당등급: $ev) isa 상여금결정;

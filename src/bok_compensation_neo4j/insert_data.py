@@ -157,7 +157,7 @@ def insert_regulation(session):
     session.run("""
         CREATE (:규정 {
             규정번호: 'BOK-COMP-2025',
-            명칭: '보수규정',
+            규정명: '보수규정',
             설명: '한국은행법과 한국은행정관에 따라 금융통화위원회 위원, 집행간부, 감사 및 직원의 보수 및 상여금에 관한 사항을 규정',
             시행일: date('1998-04-16'),
             활성여부: true
@@ -378,7 +378,7 @@ def insert_exec_compensation(session):
     ]
     for code, name, amount, desc in execs:
         session.run("""
-            CREATE (:보수기준 {보수코드: $code, 명칭: $name, 기본급액: $amount,
+            CREATE (:보수기준 {보수코드: $code, 보수기준명: $name, 기본급액: $amount,
                     적용시작일: date('2025-01-01'), 설명: $desc})
         """, code=code, name=name, amount=amount, desc=desc)
 
@@ -403,7 +403,7 @@ def insert_bonus_standards(session):
     """상여금기준 (제12조, 별표1-2) + 상여금결정 관계"""
     # 정기상여금
     session.run("""
-        CREATE (:상여금기준 {상여금코드: 'BONUS-REG', 상여유형: '정기', 명칭: '정기상여금',
+        CREATE (:상여금기준 {상여금코드: 'BONUS-REG', 상여유형: '정기', 상여금기준명: '정기상여금',
                 연간지급률: 3.8, 설명: '연간 380%. 6·12월 각 150%, 설·추석 각 40%'})
     """)
     # 평가상여금
@@ -412,7 +412,7 @@ def insert_bonus_standards(session):
         session.run("""
             MATCH (pos:직위 {직위코드: $pos_code})
             MATCH (ev:평가결과 {평가등급: $eval_grade})
-            CREATE (b:상여금기준 {상여금코드: $code, 상여유형: '평가', 명칭: '평가상여금',
+            CREATE (b:상여금기준 {상여금코드: $code, 상여유형: '평가', 상여금기준명: '평가상여금',
                     지급률: $rate, 설명: '별표1-2 평가상여금지급률표'})
             CREATE (b)-[:해당직책구분]->(pos)
             CREATE (b)-[:해당등급]->(ev)

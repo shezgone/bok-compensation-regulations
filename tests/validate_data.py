@@ -311,7 +311,7 @@ def run_neo4j_validation():
         # 11. 보수기준
         for name, expected_amt in EXPECTED_EXEC:
             r = s.run("""
-                MATCH (b:보수기준 {명칭: $name})
+                MATCH (b:보수기준 {보수기준명: $name})
                 RETURN b.기본급액 AS amt
             """, name=name)
             rec = r.single()
@@ -492,7 +492,7 @@ def run_typedb_validation():
     for name, expected_amt in EXPECTED_EXEC:
         rows = query(f"""
             match
-                $b isa 보수기준, has 명칭 "{name}", has 기본급액 $amt;
+                $b isa 보수기준, has 보수기준명 "{name}", has 기본급액 $amt;
         """)
         if not rows:
             results.append(TestResult("보수기준", name, False, "데이터 없음"))

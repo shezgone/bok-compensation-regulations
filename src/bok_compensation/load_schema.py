@@ -48,7 +48,7 @@ def insert_sample_data(driver):
                 insert
                 $reg isa 규정,
                     has 규정번호 "BOK-COMP-001",
-                    has 명칭 "한국은행 보수규정",
+                    has 규정명 "한국은행 보수규정",
                     has 규정설명 "한국은행 직원의 보수에 관한 사항을 규정",
                     has 시행일 2024-01-01T00:00:00,
                     has 활성여부 true;

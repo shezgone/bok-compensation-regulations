@@ -239,12 +239,12 @@ DIRECT_TESTS = [
         name="총재_보수기준",
         description="총재 본봉 연간 총액 확인",
         cypher="""
-            MATCH (b:보수기준 {명칭: '총재 본봉'})
+            MATCH (b:보수기준 {보수기준명: '총재 본봉'})
             RETURN b.기본급액 AS amt
         """,
         typeql="""
             match
-                $b isa 보수기준, has 명칭 "총재 본봉", has 기본급액 $amt;
+                $b isa 보수기준, has 보수기준명 "총재 본봉", has 기본급액 $amt;
         """,
         typeql_vars=[{"name": "amt", "type": "double"}],
         expected_check="exact_value",

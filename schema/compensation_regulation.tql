@@ -22,7 +22,9 @@ attribute 임금피크제코드, value string;
 attribute 국외본봉코드, value string;
 attribute 초임호봉코드, value string;
 
-attribute 명칭,           value string;
+attribute 규정명, value string;
+attribute 보수기준명, value string;
+attribute 상여금기준명, value string;
 attribute 규정설명, value string;
 attribute 개정이력설명, value string;
 attribute 직렬설명, value string;
@@ -104,7 +106,7 @@ attribute 국가명,         value string;
 # --- 규정 체계 ---
 entity 규정,
     owns 규정번호 @key,
-    owns 명칭,
+    owns 규정명,
     owns 규정설명,
     owns 시행일,
     owns 활성여부,
@@ -160,7 +162,7 @@ entity 호봉,
 
 entity 보수기준,
     owns 보수코드 @key,
-    owns 명칭,
+    owns 보수기준명,
     owns 기본급액,
     owns 적용시작일,
     owns 적용종료일,
@@ -190,7 +192,7 @@ entity 직책급기준,
 entity 상여금기준,
     owns 상여금코드 @key,
     owns 상여유형,
-    owns 명칭,
+    owns 상여금기준명,
     owns 연간지급률,
     owns 지급률,
     owns 상여금기준설명,
