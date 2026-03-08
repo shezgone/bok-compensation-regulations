@@ -1,6 +1,6 @@
-# 한국은행 보수규정 온톨로지 (BOK Compensation Regulations)
+# 한국은행 보수규정 온톨로지 (Bank of Korea Compensation Regulations Ontology)
 
-TypeDB 3.x + Neo4j 듀얼 그래프 DB 기반 한국은행 인사 보수규정 온톨로지 프로젝트.  
+TypeDB 3.x + Neo4j 듀얼 그래프 DB 기반 Bank of Korea compensation regulations ontology project.  
 보수규정 전문(20250213) PDF 문서에서 추출한 규정·호봉표·직책급표·상여금표 등 18개 범주의 데이터를 **두 가지 그래프 DB**로 모델링하고, 로컬 LLM을 활용한 자연어 질의 파이프라인을 구축합니다.
 
 ## 지식 그래프 스키마 다이어그램 (TypeDB)
