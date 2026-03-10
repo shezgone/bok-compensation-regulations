@@ -4,29 +4,19 @@ import sys
 from typing import TypedDict, List, Annotated, Dict, Any
 import operator
 
-from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END, START
 
 from typedb.driver import TransactionType
 from bok_compensation.config import TypeDBConfig
 from bok_compensation.connection import get_driver
+from bok_compensation.llm import create_chat_model
+from bok_compensation.nl_query import nl_to_typeql
+from bok_compensation.query_rules import normalize_planner_outputs
 
 # ====== 1. 환경 설정 ======
-MODEL_NAME = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b-instruct")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-
-llm_json = ChatOllama(
-    model=MODEL_NAME,
-    base_url=OLLAMA_URL,
-    temperature=0.0,
-    format="json"  
-)
-llm_text = ChatOllama(
-    model=MODEL_NAME,
-    base_url=OLLAMA_URL,
-    temperature=0.0
-)
+llm_json = create_chat_model(temperature=0.0, json_output=True)
+llm_text = create_chat_model(temperature=0.0)
 
 # ====== TypeDB 유틸리티 ======
 try:
@@ -140,8 +130,13 @@ def planner_node(state: AgentState):
         print(f"JSON Parsing Error: {e}")
         plan = {"semantic_queries": [], "data_queries": [state["query"]]}
     
-    sq = plan.get("semantic_queries", [])
-    dq = plan.get("data_queries", [])
+    normalized = normalize_planner_outputs(
+        state["query"],
+        plan.get("semantic_queries", []),
+        plan.get("data_queries", []),
+    )
+    sq = normalized["semantic_queries"]
+    dq = normalized["data_queries"]
     print(f"  -> 계획 수립 완료:\n     * Semantic 질문: {sq}\n     * Data 질문: {dq}")
     return {"semantic_queries": sq, "data_queries": dq}
 
@@ -185,46 +180,8 @@ def data_agent_node(state: AgentState):
     results = []
     
     for q in queries:
-        prompt = f"""당신은 TypeDB 3.x TypeQL READ 쿼리 전문가입니다. 
-사용자의 한국어 질문을 TypeDB 3.x TypeQL READ 쿼리로 변환합니다.
-
-## 규칙
-1. match 절만 사용하세요 (insert/delete 절대 불가).
-2. 스키마에 정의된 엔티티, 관계, 속성만 사용하세요.
-3. 문자열 비교 시 {{ $var == "값"; }} 패턴을 사용하세요.
-4. 결과에 필요한 속성을 반드시 변수로 바인딩하세요.
-5. 응답은 반드시 아래 JSON 형식으로만 반환하세요.
-6. 값 차이, 비율, 비교처럼 질문 해결에 필요하면 match 절 안에서 TypeQL 산술/비교 식을 사용할 수 있습니다.
-7. 계산 결과를 반환해야 하면 최종적으로 조회 가능한 변수로 바인딩하세요.
-
-## DB에 존재하는 실제 데이터 값 (참고)
-- 직급코드: "1급", "2급", "3급", "4급", "5급" 등
-- 직위명: "부서장(가)", "국소속실장", "부장", "팀장", "조사역" 등
-- 평가등급: "EX", "EE", "ME", "BE", "정기"
-
-## 응답 JSON 형식
-{{
-  "typeql": "match $x isa 직위, has 직위명 '1급'; ... ;",
-  "variables": [
-    {{"name": "조회할_바인딩변수명_달러기호($)제외", "type": "integer" 혹은 "double" 혹은 "string"}}
-  ]
-}}
-
-[예시]
-질문: "부서장(가) 1급 직책급은 얼마야?"
-{{
-  "typeql": "match $grade isa 직급, has 직급코드 '1급'; $pos isa 직위, has 직위명 $posname; {{ $posname == '부서장(가)'; }}; (적용기준: $std, 해당직급: $grade, 해당직위: $pos) isa 직책급결정; $std has 직책급액 $ppay;",
-  "variables": [{{"name": "ppay", "type": "double"}}]
-}}
-
-[Schema의 일부]
-{SCHEMA_TEXT[:5000]}
-
-질문: {q}
-"""
         try:
-            res = llm_json.invoke([HumanMessage(content=prompt)])
-            parsed = json.loads(res.content)
+            parsed = nl_to_typeql(q)
             typeql = parsed.get("typeql", "")
             variables = parsed.get("variables", [])
             print(f"  -> 생성된 TypeQL:\n{typeql}")

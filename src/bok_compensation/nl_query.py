@@ -9,10 +9,9 @@ from typedb.driver import TransactionType
 
 from .config import TypeDBConfig
 from .connection import get_driver
+from .llm import create_chat_model
+from .query_rules import repair_typedb_plan, typedb_rule_based_plan
 
-
-MODEL_NAME = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b-instruct")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
 try:
     with open(TypeDBConfig().schema_file, "r", encoding="utf-8") as schema_file:
@@ -24,11 +23,10 @@ except OSError:
 def _invoke_text(prompt: str) -> str:
     try:
         from langchain_core.messages import HumanMessage
-        from langchain_ollama import ChatOllama
     except ImportError:
         return prompt
 
-    model = ChatOllama(model=MODEL_NAME, base_url=OLLAMA_URL, temperature=0.0)
+    model = create_chat_model(temperature=0.0)
     response = model.invoke([HumanMessage(content=prompt)])
     return response.content
 
@@ -36,16 +34,10 @@ def _invoke_text(prompt: str) -> str:
 def _invoke_json(prompt: str) -> Dict[str, Any]:
     try:
         from langchain_core.messages import HumanMessage
-        from langchain_ollama import ChatOllama
     except ImportError as exc:
-        raise RuntimeError("langchain-ollama and langchain-core are required for NL query generation") from exc
+        raise RuntimeError("langchain-core and an LLM backend package are required for NL query generation") from exc
 
-    model = ChatOllama(
-        model=MODEL_NAME,
-        base_url=OLLAMA_URL,
-        temperature=0.0,
-        format="json",
-    )
+    model = create_chat_model(temperature=0.0, json_output=True)
     response = model.invoke([HumanMessage(content=prompt)])
     return json.loads(response.content)
 
@@ -94,6 +86,10 @@ def semantic_answer(question: str, rules_context: str) -> str:
 
 
 def nl_to_typeql(question: str) -> Dict[str, Any]:
+    fallback = typedb_rule_based_plan(question)
+    if fallback is not None:
+        return fallback
+
     prompt = f"""당신은 TypeDB 3.x TypeQL READ 쿼리 전문가입니다.
 사용자 질문을 TypeDB 3.x 조회 쿼리로 바꾸세요.
 
@@ -103,6 +99,24 @@ def nl_to_typeql(question: str) -> Dict[str, Any]:
 3. 변수명에는 달러 기호를 포함하지 마세요.
 4. 값 차이, 비율, 비교처럼 질문 해결에 필요하면 match 절 안에서 TypeQL 산술/비교 식을 사용할 수 있습니다.
 5. 계산 결과를 반환해야 하면 최종적으로 조회 가능한 변수로 바인딩하세요.
+6. query 본문에서 `owns`, `plays`, `relates`, 점 표기법(`$x.attr`)을 절대 사용하지 말고 반드시 `isa`, `has`, 관계 패턴만 사용하세요.
+7. 문자열 값은 반드시 큰따옴표를 사용하세요.
+
+스키마 핵심:
+- 직급 필터 속성: `직급코드`
+- 직위 필터 속성: `직위명`
+- 평가 필터 속성: `평가등급`
+- 개정이력 설명 속성: `개정이력설명`
+- 국외본봉 금액 속성: `국외기본급액`
+
+잘못된 예:
+- `match $x owns 호봉번호 1;`
+- `$보수기준.보수코드 = "3급";`
+- `$h plays 호봉체계구성:소속직급 $g;`
+
+올바른 예:
+- `match $g isa 직급, has 직급코드 "4급"; (소속직급: $g, 구성호봉: $h) isa 호봉체계구성; $h has 호봉번호 $n;`
+- `match $ev isa 평가결과, has 평가등급 "EX";`
 
 응답 형식:
 {{
@@ -116,7 +130,8 @@ def nl_to_typeql(question: str) -> Dict[str, Any]:
 
 질문: {question}
 """
-    return _invoke_json(prompt)
+    plan = _invoke_json(prompt)
+    return repair_typedb_plan(question, plan)
 
 
 def execute_typeql(typeql: str, variables: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

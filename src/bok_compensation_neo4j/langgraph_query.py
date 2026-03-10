@@ -4,35 +4,25 @@ import sys
 from typing import TypedDict, List, Annotated, Dict, Any
 import operator
 
-from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, END, START
 
 from bok_compensation_neo4j.config import Neo4jConfig
 from bok_compensation_neo4j.connection import get_driver
+from bok_compensation.llm import create_chat_model
+from bok_compensation_neo4j.nl_query import nl_to_cypher
+from bok_compensation.query_rules import normalize_planner_outputs
 
 # ====== 1. 환경 설정 ======
-MODEL_NAME = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b-instruct")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-
 # 모델 두개 초기화 (JSON 출력이 필요한 노드와 일반 텍스트 노드)
-llm_json = ChatOllama(
-    model=MODEL_NAME,
-    base_url=OLLAMA_URL,
-    temperature=0.0,
-    format="json"  
-)
-llm_text = ChatOllama(
-    model=MODEL_NAME,
-    base_url=OLLAMA_URL,
-    temperature=0.0
-)
+llm_json = create_chat_model(temperature=0.0, json_output=True)
+llm_text = create_chat_model(temperature=0.0)
 
 # ====== Neo4j 유틸리티 ======
 GRAPH_SCHEMA = """
 [Neo4j 그래프 스키마]
-노드: (:규정), (:조문), (:직렬), (:직급), (:직위), (:호봉), (:수당), (:보수기준), (:직책급기준), (:상여금기준), (:연봉차등액기준), (:연봉상한액기준), (:임금피크제기준), (:국외본봉기준), (:초임호봉기준), (:평가결과)
-관계: -[:규정구성]->, -[:직렬분류]->, -[:호봉체계구성]->, -[:해당직급]->, -[:해당직위]->, -[:해당직책구분]->, -[:해당등급]->, -[:대상직렬]->
+노드: (:규정), (:조문), (:개정이력), (:직렬), (:직급), (:직위), (:호봉), (:수당), (:보수기준), (:직책급기준), (:상여금기준), (:연봉차등액기준), (:연봉상한액기준), (:임금피크제기준), (:국외본봉기준), (:초임호봉기준), (:평가결과)
+관계: -[:규정구성]->, -[:규정개정]->, -[:직렬분류]->, -[:호봉체계구성]->, -[:해당직급]->, -[:해당직위]->, -[:해당직책구분]->, -[:해당등급]->, -[:대상직렬]->
 """
 
 def fetch_rules() -> str:
@@ -103,8 +93,13 @@ def planner_node(state: AgentState):
         print(f"JSON Parsing Error in Planner: {e}")
         plan = {"semantic_queries": [], "data_queries": [state["query"]]}
     
-    sq = plan.get("semantic_queries", [])
-    dq = plan.get("data_queries", [])
+    normalized = normalize_planner_outputs(
+        state["query"],
+        plan.get("semantic_queries", []),
+        plan.get("data_queries", []),
+    )
+    sq = normalized["semantic_queries"]
+    dq = normalized["data_queries"]
     
     print(f"  -> 계획 수립 완료:\n     * Semantic 질문: {sq}\n     * Data 질문: {dq}")
     
@@ -154,21 +149,8 @@ def data_agent_node(state: AgentState):
     results = []
     
     for q in queries:
-        prompt = f"""당신은 Neo4j 데이터베이스와 Cypher 쿼리 전문가입니다. 
-다음 그래프 스키마를 확인하고, 질문에 대한 데이터를 조회하는 실행 가능한 Cypher 문을 만드세요.
-
-{GRAPH_SCHEMA}
-
-질문: {q}
-
-응답은 반드시 아래 JSON 형태로만 작성하세요. 설명은 생략합니다.
-{{
-  "cypher": "MATCH (n) RETURN n LIMIT 10"
-}}
-"""
         try:
-            res = llm_json.invoke([HumanMessage(content=prompt)])
-            parsed = json.loads(res.content)
+            parsed = nl_to_cypher(q)
             cypher = parsed["cypher"]
             print(f"  -> 생성된 Cypher 쿼리:\n     {cypher}")
             

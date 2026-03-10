@@ -18,12 +18,14 @@ neo4j = [
 llm = [
     "langchain-core",
     "langchain-ollama",
+    "langchain-openai",
     "langgraph",
 ]
 full = [
     "neo4j",
     "langchain-core",
     "langchain-ollama",
+    "langchain-openai",
     "langgraph",
     "pytest",
 ]

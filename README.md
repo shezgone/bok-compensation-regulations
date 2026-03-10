@@ -212,12 +212,28 @@ PYTHONPATH=src python -m bok_compensation.graph_query_demo
 PYTHONPATH=src python -m bok_compensation_neo4j.graph_query_demo
 ```
 
-### 5. 자연어 질의 (Ollama 필요)
+### 5. 자연어 질의
+
+기본값은 OpenAI 호환 엔드포인트를 사용합니다.
+
+`.env.example`를 복사해 환경변수 파일로 써도 됩니다.
+
+```bash
+export LLM_PROVIDER=openai-compatible
+export OPENAI_BASE_URL=http://211.188.81.250:30402/v1
+export OPENAI_MODEL=HCX-GOV-THINK-V1-32B
+```
+
+Ollama의 Qwen 모델을 계속 쓰려면 아래처럼 provider만 바꾸면 됩니다.
 
 ```bash
 brew install ollama
 ollama serve                                    # 서버 시작
 ollama pull qwen2.5-coder:14b-instruct          # 모델 다운로드 (~9GB)
+export LLM_PROVIDER=ollama
+export OLLAMA_URL=http://localhost:11434
+export OLLAMA_MODEL=qwen2.5-coder:14b-instruct
+```
 
 # TypeDB LangGraph 파이프라인
 PYTHONPATH=src python -m bok_compensation.langgraph_query \
@@ -234,9 +250,17 @@ PYTHONPATH=src python -m bok_compensation_neo4j.langgraph_query \
 # Neo4j 규정 해석형 질문
 PYTHONPATH=src python -m bok_compensation_neo4j.langgraph_query \
   "기한부 고용계약자는 상여금을 받을 수 있어?"
+
+# 복합질문 비교표 출력
+PYTHONPATH=src python tests/test_nl_pipeline.py compare
 ```
 
 현재 저장소의 기본 자연어 실행 엔트리포인트는 `langgraph_query.py`이며, `nl_query.py`는 테스트 및 기존 호출부 호환을 위한 얇은 래퍼입니다.
+
+역할 차이:
+- `langgraph_query.py`: 기본 실행 경로입니다. 복합질문을 `Planner → Semantic/Data → Summary`로 분해해 처리합니다.
+- `nl_query.py`: 단일 라우터 호환 레이어입니다. 주로 기존 호출부, E2E 쿼리 생성 테스트, 라우팅 단위 테스트에서 사용합니다.
+- 복합질문 검증은 `langgraph_query.py` 기준으로 보는 것이 맞고, `nl_query.py`는 혼합 의도를 완전하게 다루는 목적이 아닙니다.
 
 ### 6. Neo4j 브라우저 시각화
 
@@ -401,6 +425,7 @@ Summary Agent가 최종 답변 통합
 - TypeDB 파이프라인은 `schema/compensation_regulation.tql` 일부를 프롬프트에 포함해 TypeQL 생성을 유도
 - Neo4j 파이프라인은 그래프 스키마 요약을 프롬프트에 포함해 Cypher 생성을 유도
 - 두 구현 모두 조회 결과를 JSON 문자열로 정리한 뒤 최종 답변 생성을 수행
+- 반복적으로 등장하는 질문 패턴은 `query_rules.py`의 규칙 기반 템플릿으로 우선 보정해, 모델 편차가 있어도 핵심 질의를 안정적으로 처리합니다.
 
 예시 질문:
 
@@ -433,7 +458,7 @@ PYTHONPATH=src python tests/validate_data.py typedb
 
 #### NL 파이프라인 테스트 (test_nl_pipeline.py)
 
-DB 직접 쿼리 12종을 최근 기준으로 검증했고, Ollama 기반 E2E 시나리오는 별도 환경에서 선택적으로 실행할 수 있습니다.
+DB 직접 쿼리, E2E 쿼리 생성, LangGraph 스모크, 복합질문 비교를 하나의 스크립트에서 실행할 수 있습니다.
 
 ```bash
 # 직접 쿼리 스모크 테스트
@@ -443,9 +468,16 @@ PYTHONPATH=src python tests/test_nl_pipeline.py direct all
 PYTHONPATH=src python tests/test_nl_pipeline.py direct neo4j
 PYTHONPATH=src python tests/test_nl_pipeline.py direct typedb
 
-# Ollama 기반 E2E 시나리오
+# provider 설정 후 E2E 시나리오
 PYTHONPATH=src python tests/test_nl_pipeline.py e2e typedb
 PYTHONPATH=src python tests/test_nl_pipeline.py e2e neo4j
+
+# LangGraph 스모크 테스트
+PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb
+PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j
+
+# 복합질문 비교표
+PYTHONPATH=src python tests/test_nl_pipeline.py compare
 
 # 전체 묶음 실행
 PYTHONPATH=src python tests/test_nl_pipeline.py all all
@@ -458,13 +490,21 @@ PYTHONPATH=src python tests/validate_data.py all
 
 - `PYTHONPATH=src python tests/validate_data.py all` → TypeDB 101/101, Neo4j 101/101 통과
 - `PYTHONPATH=src python tests/test_nl_pipeline.py direct all` → TypeDB 12/12, Neo4j 12/12 통과
-- `PYTHONPATH=src pytest tests/test_nl_router.py tests/test_typedb_router.py` → 4건 통과
+- `PYTHONPATH=src python tests/test_nl_pipeline.py e2e typedb` → TypeDB 6/6 통과
+- `PYTHONPATH=src python tests/test_nl_pipeline.py e2e neo4j` → Neo4j 6/6 통과
+- `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb` → TypeDB 2/2 통과
+- `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j` → Neo4j 2/2 통과
+- `PYTHONPATH=src python tests/test_nl_pipeline.py compare` → 복합질문 4건 비교표 출력, TypeDB/Neo4j 전부 PASS
+- `PYTHONPATH=src pytest tests/test_query_rules.py tests/test_nl_router.py tests/test_typedb_router.py` → 9건 통과
 
 참고:
 
 - [tests/test_nl_router.py](tests/test_nl_router.py), [tests/test_typedb_router.py](tests/test_typedb_router.py)는 `nl_query.py` 호환 레이어를 기준으로 라우팅 분기를 검증합니다.
+- [tests/test_query_rules.py](tests/test_query_rules.py)는 규칙 기반 쿼리 템플릿과 보정 로직을 검증합니다.
 
 직접 쿼리 테스트 항목: 5급 11호봉, 3급 50호봉, 팀장 3급 직책급, G5 초봉(JOIN), 1급 EX 차등액, 미국 1급 국외본봉, 부서장가 EX 상여금, 임금피크제 2년차, 3급 호봉수, 개정이력 건수, 총재 보수기준, 5급 호봉 범위
+
+복합질문 비교 항목: 기한부+미국1급 국외본봉, G5 초봉+미국2급 국외본봉, 기한부+G5 초봉, 개정이력+임금피크제 2년차 지급률
 
 ---
 
@@ -551,8 +591,12 @@ PYTHONPATH=src python tests/validate_data.py all
 | `NEO4J_USERNAME` | `neo4j` | Neo4j 사용자명 |
 | `NEO4J_PASSWORD` | `password` | Neo4j 비밀번호 |
 | `NEO4J_DATABASE` | `neo4j` | Neo4j 데이터베이스명 |
+| `LLM_PROVIDER` | `openai-compatible` | `openai-compatible` 또는 `ollama` |
+| `OPENAI_BASE_URL` | `http://211.188.81.250:30402/v1` | OpenAI 호환 API 주소 |
+| `OPENAI_MODEL` | `HCX-GOV-THINK-V1-32B` | OpenAI 호환 엔드포인트에서 사용할 모델 |
+| `OPENAI_API_KEY` | `unused` | 필요 시 API 키, 기본 엔드포인트는 더미값으로 동작 |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama 서버 주소 |
-| `OLLAMA_MODEL` | `qwen2.5-coder:14b-instruct` | 자연어 질의에 사용할 LLM |
+| `OLLAMA_MODEL` | `qwen2.5-coder:14b-instruct` | Ollama 사용 시 자연어 질의에 사용할 LLM |
 
 ---
 
@@ -562,13 +606,14 @@ PYTHONPATH=src python tests/validate_data.py all
 - **Neo4j 5.x Community** — 그래프 데이터베이스 (Docker: `neo4j:5-community`)
 - **typedb-driver** — TypeDB Python 드라이버
 - **neo4j (Python)** — Neo4j Bolt 드라이버 (현재 `pyproject.toml`에는 미포함, 별도 설치 필요)
-- **langchain-ollama / langchain-core / langgraph** — LangGraph 기반 자연어 질의 실행용
-- **Ollama + Qwen2.5-Coder 14B** — 로컬 LLM (자연어 → TypeQL/Cypher 변환)
+- **langchain-ollama / langchain-openai / langchain-core / langgraph** — LangGraph 기반 자연어 질의 실행용
+- **OpenAI 호환 엔드포인트 또는 Ollama + Qwen2.5-Coder 14B** — 자연어 → TypeQL/Cypher 변환
 - **Python 3.9+** — 런타임
 
 ## 현재 검증 기준과 한계
 
-- 저장소의 현재 기준선은 `validate_data.py`와 `test_nl_pipeline.py direct`입니다. 두 스크립트는 현재 데이터 적재와 핵심 조회가 정상인지 빠르게 확인하는 데 가장 신뢰할 수 있습니다.
-- Ollama 기반 자연어 질의는 모델 품질과 프롬프트 편차의 영향을 받으므로, README에서는 재현 가능한 정답률 수치 대신 실행 방법과 구조만 설명합니다.
-- `tests/test_nl_router.py`, `tests/test_typedb_router.py`는 호환용 `nl_query.py` 레이어를 검증합니다.
-- 실서비스 수준으로 확장하려면 few-shot 예시 보강, 질의 유형 세분화, 실패한 쿼리에 대한 재작성 루프가 추가로 필요합니다.
+- 저장소의 현재 기준선은 `validate_data.py`, `test_nl_pipeline.py direct`, `test_nl_pipeline.py e2e`, `test_nl_pipeline.py langgraph`, `test_nl_pipeline.py compare` 입니다.
+- 현재 기본 LLM 경로는 OpenAI 호환 엔드포인트(`OPENAI_BASE_URL`)이며, Ollama Qwen은 선택 옵션으로 유지됩니다.
+- 단일 질의 생성과 핵심 조회 검증은 `direct`와 `e2e`에서 확인하고, 복합질문 품질은 `langgraph`와 `compare`에서 확인합니다.
+- `tests/test_nl_router.py`, `tests/test_typedb_router.py`는 호환용 `nl_query.py` 레이어를 검증하고, `tests/test_query_rules.py`는 규칙 기반 템플릿과 보정 로직을 검증합니다.
+- 현재 복합질문 안정성은 규칙 기반 템플릿과 Planner 후처리에 일부 의존합니다. 실서비스 수준으로 더 확장하려면 few-shot 예시 보강, 질의 유형 세분화, 실패한 쿼리에 대한 재작성 루프가 추가로 필요합니다.

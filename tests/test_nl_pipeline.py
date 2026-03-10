@@ -2,18 +2,22 @@
 NL 파이프라인 테스트 스위트 — DB 쿼리 정확성 + E2E 검증
 
 두 가지 레벨 테스트:
-  1. 직접 쿼리 테스트 (Direct): 알려진 올바른 쿼리를 DB에 실행 → 기대값 비교
-  2. E2E 파이프라인 테스트 (NL): 자연어 → LLM 쿼리 생성 → DB 실행 → 결과 검증
-     (Ollama 실행 필요)
+    1. 직접 쿼리 테스트 (Direct): 알려진 올바른 쿼리를 DB에 실행 → 기대값 비교
+    2. E2E 파이프라인 테스트 (NL): 자연어 → LLM 쿼리 생성 → DB 실행 → 결과 검증
+         (LLM provider 설정 필요)
 
 사용법:
     PYTHONPATH=src python tests/test_nl_pipeline.py direct neo4j
     PYTHONPATH=src python tests/test_nl_pipeline.py direct typedb
     PYTHONPATH=src python tests/test_nl_pipeline.py e2e neo4j
     PYTHONPATH=src python tests/test_nl_pipeline.py e2e typedb
+    PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j
+    PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb
+    PYTHONPATH=src python tests/test_nl_pipeline.py compare
     PYTHONPATH=src python tests/test_nl_pipeline.py all
 """
 
+import os
 import sys
 import json
 import traceback
@@ -43,6 +47,21 @@ class E2ETest:
     question: str
     expected_check: str
     expected_values: Dict[str, Any]
+
+
+@dataclass
+class LangGraphSmokeTest:
+    name: str
+    question: str
+    expected_fragments: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ComparisonRow:
+    name: str
+    question: str
+    neo4j: "TestResult"
+    typedb: "TestResult"
 
 
 # ---- 직접 쿼리 테스트 ----
@@ -312,6 +331,43 @@ E2E_TESTS = [
 ]
 
 
+LANGGRAPH_SMOKE_TESTS = [
+    LangGraphSmokeTest(
+        name="초봉_데이터_질문",
+        question="G5 직원의 초봉은?",
+        expected_fragments=["1554000", "11"],
+    ),
+    LangGraphSmokeTest(
+        name="규정_해석_질문",
+        question="기한부 고용계약자는 상여금을 받을 수 있어?",
+    ),
+]
+
+
+LANGGRAPH_COMPLEX_TESTS = [
+    LangGraphSmokeTest(
+        name="복합_기한부_미국1급",
+        question="기한부 고용계약자가 상여금을 받을 수 있는지와, 미국 주재 1급 직원의 국외본봉은 얼마인지 함께 알려줘.",
+        expected_fragments=["받을 수 없", "10780", "USD"],
+    ),
+    LangGraphSmokeTest(
+        name="복합_G5_미국2급",
+        question="G5 직원의 초봉과 미국 주재 2급 직원의 국외본봉을 함께 알려줘.",
+        expected_fragments=["11", "1554000", "9760", "USD"],
+    ),
+    LangGraphSmokeTest(
+        name="복합_기한부_G5",
+        question="기한부 고용계약자가 상여금을 받을 수 있는지와 G5 직원의 초봉을 함께 알려줘.",
+        expected_fragments=["받을 수 없", "11", "1554000"],
+    ),
+    LangGraphSmokeTest(
+        name="복합_개정이력_임금피크",
+        question="보수규정 개정이력과 임금피크제 2년차 지급률을 함께 알려줘.",
+        expected_fragments=["개정", "0.8"],
+    ),
+]
+
+
 # ============================================================
 # 테스트 실행 엔진
 # ============================================================
@@ -501,8 +557,18 @@ def run_typedb_direct_tests() -> List[TestResult]:
 
 
 # ============================================================
-# E2E 테스트 (Ollama 필요)
+# E2E 테스트 (LLM 필요)
 # ============================================================
+
+def describe_llm_backend() -> str:
+    provider = os.getenv("LLM_PROVIDER", "openai-compatible")
+    if provider == "ollama":
+        model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b-instruct")
+        base_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    else:
+        model = os.getenv("OPENAI_MODEL", "HCX-GOV-THINK-V1-32B")
+        base_url = os.getenv("OPENAI_BASE_URL", "http://211.188.81.250:30402/v1")
+    return f"provider={provider}, model={model}, endpoint={base_url}"
 
 def run_neo4j_e2e_tests() -> List[TestResult]:
     from bok_compensation_neo4j.nl_query import nl_to_cypher, execute_cypher
@@ -555,6 +621,62 @@ def run_typedb_e2e_tests() -> List[TestResult]:
     return results
 
 
+def _run_langgraph_smoke_test(app, test: LangGraphSmokeTest) -> TestResult:
+    try:
+        final_state = app.invoke(
+            {
+                "query": test.question,
+                "semantic_queries": [],
+                "data_queries": [],
+                "semantic_results": [],
+                "data_results": [],
+            }
+        )
+        final_answer = str(final_state.get("final_answer", "")).strip()
+        semantic_results = "\n".join(final_state.get("semantic_results", []))
+        data_results = "\n".join(final_state.get("data_results", []))
+        combined = "\n".join([final_answer, semantic_results, data_results])
+
+        if not final_answer:
+            return TestResult(test.name, False, "최종 응답이 비어 있음")
+        if "조회 실패" in combined:
+            return TestResult(test.name, False, "LangGraph 내부 데이터 조회 실패")
+        for fragment in test.expected_fragments:
+            if fragment not in combined:
+                return TestResult(test.name, False, f"기대 조각 `{fragment}` 누락")
+        return TestResult(test.name, True, "")
+    except Exception as exc:
+        return TestResult(test.name, False, f"오류: {exc}")
+
+
+def run_neo4j_langgraph_smoke_tests() -> List[TestResult]:
+    from bok_compensation_neo4j.langgraph_query import create_langgraph
+
+    app = create_langgraph()
+    return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_SMOKE_TESTS]
+
+
+def run_typedb_langgraph_smoke_tests() -> List[TestResult]:
+    from bok_compensation.langgraph_query import create_langgraph
+
+    app = create_langgraph()
+    return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_SMOKE_TESTS]
+
+
+def run_neo4j_langgraph_complex_tests() -> List[TestResult]:
+    from bok_compensation_neo4j.langgraph_query import create_langgraph
+
+    app = create_langgraph()
+    return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_COMPLEX_TESTS]
+
+
+def run_typedb_langgraph_complex_tests() -> List[TestResult]:
+    from bok_compensation.langgraph_query import create_langgraph
+
+    app = create_langgraph()
+    return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_COMPLEX_TESTS]
+
+
 # ============================================================
 # 출력
 # ============================================================
@@ -579,6 +701,35 @@ def print_results(title: str, results: List[TestResult]):
     else:
         print(f"\n  ⚠️  {total - passed}건 실패")
     print()
+
+
+def print_comparison_table(title: str, rows: List[ComparisonRow]):
+    print(f"\n{'='*100}")
+    print(f"  {title}")
+    print(f"{'='*100}")
+    print("| 테스트 | Neo4j | TypeDB | 질문 |")
+    print("| --- | --- | --- | --- |")
+    for row in rows:
+        neo4j_cell = "PASS" if row.neo4j.passed else f"FAIL ({row.neo4j.detail})"
+        typedb_cell = "PASS" if row.typedb.passed else f"FAIL ({row.typedb.detail})"
+        print(f"| {row.name} | {neo4j_cell} | {typedb_cell} | {row.question} |")
+    print()
+
+
+def build_comparison_rows() -> List[ComparisonRow]:
+    neo4j_results = run_neo4j_langgraph_complex_tests()
+    typedb_results = run_typedb_langgraph_complex_tests()
+    rows = []
+    for test, neo4j_result, typedb_result in zip(LANGGRAPH_COMPLEX_TESTS, neo4j_results, typedb_results):
+        rows.append(
+            ComparisonRow(
+                name=test.name,
+                question=test.question,
+                neo4j=neo4j_result,
+                typedb=typedb_result,
+            )
+        )
+    return rows
 
 
 # ============================================================
@@ -608,8 +759,8 @@ def main():
                 traceback.print_exc()
 
     elif mode == "e2e":
-        print("\n⚠️  E2E 테스트는 Ollama가 실행 중이어야 합니다.")
-        print(f"   모델: qwen2.5-coder:14b-instruct\n")
+        print("\n⚠️  E2E 테스트는 설정된 LLM provider와 DB 연결이 필요합니다.")
+        print(f"   {describe_llm_backend()}\n")
 
         if target in ("neo4j", "all"):
             try:
@@ -626,6 +777,36 @@ def main():
             except Exception as e:
                 print(f"TypeDB E2E 테스트 실패: {e}")
                 traceback.print_exc()
+
+    elif mode == "langgraph":
+        print("\n⚠️  LangGraph 스모크 테스트는 설정된 LLM provider와 DB 연결이 필요합니다.")
+        print(f"   {describe_llm_backend()}\n")
+
+        if target in ("neo4j", "all"):
+            try:
+                results = run_neo4j_langgraph_smoke_tests()
+                print_results("Neo4j LangGraph 스모크 테스트", results)
+            except Exception as e:
+                print(f"Neo4j LangGraph 테스트 실패: {e}")
+                traceback.print_exc()
+
+        if target in ("typedb", "all"):
+            try:
+                results = run_typedb_langgraph_smoke_tests()
+                print_results("TypeDB LangGraph 스모크 테스트", results)
+            except Exception as e:
+                print(f"TypeDB LangGraph 테스트 실패: {e}")
+                traceback.print_exc()
+
+    elif mode == "compare":
+        print("\n⚠️  복합질문 LangGraph 비교는 설정된 LLM provider와 DB 연결이 필요합니다.")
+        print(f"   {describe_llm_backend()}\n")
+        try:
+            rows = build_comparison_rows()
+            print_comparison_table("복합질문 LangGraph 비교표", rows)
+        except Exception as e:
+            print(f"복합질문 비교 실행 실패: {e}")
+            traceback.print_exc()
 
     elif mode == "all":
         # 직접 쿼리 테스트
@@ -644,7 +825,8 @@ def main():
                     print(f"TypeDB 직접 테스트 실패: {e}")
 
         # E2E 테스트
-        print("\n⚠️  E2E 테스트는 Ollama가 실행 중이어야 합니다.\n")
+        print("\n⚠️  E2E 테스트는 설정된 LLM provider와 DB 연결이 필요합니다.\n")
+        print(f"   {describe_llm_backend()}\n")
         for db in (["neo4j", "typedb"] if target == "all" else [target]):
             if db == "neo4j":
                 try:
@@ -658,8 +840,32 @@ def main():
                     print_results("TypeDB E2E 파이프라인 테스트", results)
                 except Exception as e:
                     print(f"TypeDB E2E 테스트 실패: {e}")
+
+        print("\n⚠️  LangGraph 스모크 테스트를 이어서 실행합니다.\n")
+        print(f"   {describe_llm_backend()}\n")
+        for db in (["neo4j", "typedb"] if target == "all" else [target]):
+            if db == "neo4j":
+                try:
+                    results = run_neo4j_langgraph_smoke_tests()
+                    print_results("Neo4j LangGraph 스모크 테스트", results)
+                except Exception as e:
+                    print(f"Neo4j LangGraph 테스트 실패: {e}")
+            elif db == "typedb":
+                try:
+                    results = run_typedb_langgraph_smoke_tests()
+                    print_results("TypeDB LangGraph 스모크 테스트", results)
+                except Exception as e:
+                    print(f"TypeDB LangGraph 테스트 실패: {e}")
+
+        print("\n⚠️  복합질문 LangGraph 비교표를 이어서 출력합니다.\n")
+        print(f"   {describe_llm_backend()}\n")
+        try:
+            rows = build_comparison_rows()
+            print_comparison_table("복합질문 LangGraph 비교표", rows)
+        except Exception as e:
+            print(f"복합질문 비교 실행 실패: {e}")
     else:
-        print(f"사용법: python tests/test_nl_pipeline.py [direct|e2e|all] [neo4j|typedb|all]")
+        print(f"사용법: python tests/test_nl_pipeline.py [direct|e2e|langgraph|compare|all] [neo4j|typedb|all]")
 
 
 if __name__ == "__main__":
