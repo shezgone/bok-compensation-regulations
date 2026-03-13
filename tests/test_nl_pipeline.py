@@ -20,6 +20,7 @@ NL 파이프라인 테스트 스위트 — DB 쿼리 정확성 + E2E 검증
 import os
 import sys
 import json
+from pathlib import Path
 import traceback
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
@@ -463,6 +464,36 @@ def check_result(check_type: str, expected: dict, rows: list, var_name: str = No
     return False, f"알 수 없는 검증 유형: {check_type}"
 
 
+def save_failure_artifact(
+    backend: str,
+    test_name: str,
+    question: str,
+    *,
+    plan: Optional[Dict[str, Any]] = None,
+    rows: Optional[List[Dict[str, Any]]] = None,
+    error: Optional[str] = None,
+) -> str:
+    output_root = os.getenv("BOK_FAILURE_TRACE_DIR", "").strip()
+    if output_root:
+        base_dir = Path(output_root)
+    else:
+        base_dir = Path(__file__).resolve().parents[1] / "artifacts" / "query_failures"
+
+    base_dir.mkdir(parents=True, exist_ok=True)
+    slug = "".join(ch if ch.isalnum() else "_" for ch in test_name).strip("_")[:60] or backend
+    file_path = base_dir / f"{backend}_{slug}.json"
+    payload = {
+        "backend": backend,
+        "test_name": test_name,
+        "question": question,
+        "plan": plan,
+        "rows": rows,
+        "error": error,
+    }
+    file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(file_path)
+
+
 # ============================================================
 # Neo4j 직접 쿼리 테스트
 # ============================================================
@@ -575,6 +606,7 @@ def run_neo4j_e2e_tests() -> List[TestResult]:
     results = []
 
     for test in E2E_TESTS:
+        parsed = None
         try:
             print(f"\n  ▶ [{test.name}] {test.question}")
             parsed = nl_to_cypher(test.question)
@@ -587,10 +619,12 @@ def run_neo4j_e2e_tests() -> List[TestResult]:
             if ok:
                 print(f"    ✅ 통과")
             else:
-                print(f"    ❌ {detail}")
+                artifact = save_failure_artifact("neo4j", test.name, test.question, plan=parsed, rows=rows, error=detail)
+                print(f"    ❌ {detail} (artifact: {artifact})")
         except Exception as e:
             results.append(TestResult(test.name, False, f"오류: {e}"))
-            print(f"    ❌ 오류: {e}")
+            artifact = save_failure_artifact("neo4j", test.name, test.question, plan=parsed, error=str(e))
+            print(f"    ❌ 오류: {e} (artifact: {artifact})")
 
     return results
 
@@ -600,6 +634,7 @@ def run_typedb_e2e_tests() -> List[TestResult]:
     results = []
 
     for test in E2E_TESTS:
+        parsed = None
         try:
             print(f"\n  ▶ [{test.name}] {test.question}")
             parsed = nl_to_typeql(test.question)
@@ -613,10 +648,12 @@ def run_typedb_e2e_tests() -> List[TestResult]:
             if ok:
                 print(f"    ✅ 통과")
             else:
-                print(f"    ❌ {detail}")
+                artifact = save_failure_artifact("typedb", test.name, test.question, plan=parsed, rows=rows, error=detail)
+                print(f"    ❌ {detail} (artifact: {artifact})")
         except Exception as e:
             results.append(TestResult(test.name, False, f"오류: {e}"))
-            print(f"    ❌ 오류: {e}")
+            artifact = save_failure_artifact("typedb", test.name, test.question, plan=parsed, error=str(e))
+            print(f"    ❌ 오류: {e} (artifact: {artifact})")
 
     return results
 

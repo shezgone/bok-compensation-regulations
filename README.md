@@ -91,6 +91,9 @@ flowchart TD
 
 - TypeDB 스키마의 공용 primitive 속성을 엔티티별 속성으로 정리해 허브형 attribute 안티패턴을 제거했습니다.
 - TypeDB와 Neo4j 적재 데이터의 속성명을 동일한 규칙으로 맞췄습니다.
+- 자연어 질의 경로에 retrieval-guided planner를 추가해 LLM 자유 생성 전에 직급, 직위, 평가등급, 국가, 초임호봉 규칙을 먼저 고정합니다.
+- 실제 DB에서 live catalog를 추출하고 key binding으로 규칙 행을 선택하도록 바꿔 paraphrase 계열 질의 실패를 줄였습니다.
+- 실패 케이스 재현을 위해 query trace와 E2E failure artifact를 파일로 남길 수 있습니다.
 - 기준 검증 결과: `tests/validate_data.py all` 기준 TypeDB 101/101, Neo4j 101/101 통과
 - 직접 질의 스모크 테스트 결과: `tests/test_nl_pipeline.py direct all` 기준 TypeDB 12/12, Neo4j 12/12 통과
 - Neo4j 브라우저용 샘플 질의는 [docs/neo4j_browser_queries.md](docs/neo4j_browser_queries.md)에서 바로 사용할 수 있습니다.
@@ -110,8 +113,10 @@ bok-compensation-regulations/
 │   │   ├── insert_data.py            # PDF 기반 데이터 삽입 (18단계)
 │   │   ├── check_db.py               # DB 데이터 검증
 │   │   ├── graph_query_demo.py       # 그래프 탐색 쿼리 데모
+│   │   ├── live_catalog.py           # TypeDB/Neo4j live binding 추출
 │   │   ├── nl_query.py               # 레거시 호환 자연어 진입점
 │   │   ├── langgraph_query.py        # LangGraph 기반 자연어 질의 파이프라인
+│   │   ├── query_retrieval.py        # retrieval-guided intent/value grounding
 │   │   ├── verify_schema.py          # 스키마 검증
 │   │   ├── load_schema.py            # 스키마 로드 (레거시)
 │   │   └── sample_queries.py         # 샘플 쿼리 (레거시)
@@ -132,7 +137,9 @@ bok-compensation-regulations/
 ├── tests/
 │   ├── __init__.py
 │   ├── validate_data.py              # PDF ↔ DB 데이터 검증 (101건/DB)
-│   ├── test_nl_pipeline.py           # 직접 쿼리(12) + Ollama 기반 E2E 시나리오
+│   ├── test_nl_pipeline.py           # 직접 쿼리 + E2E + failure artifact 저장
+│   ├── test_nl_regressions.py        # 자연어 회귀 케이스 (TypeDB/Neo4j 공통)
+│   ├── test_query_rules.py           # retrieval-guided planner 회귀 테스트
 │   ├── test_nl_router.py             # Neo4j 라우터 호환성 테스트
 │   └── test_typedb_router.py         # TypeDB 라우터 호환성 테스트
 ├── pyproject.toml
@@ -261,6 +268,12 @@ PYTHONPATH=src python tests/test_nl_pipeline.py compare
 - `langgraph_query.py`: 기본 실행 경로입니다. 복합질문을 `Planner → Semantic/Data → Summary`로 분해해 처리합니다.
 - `nl_query.py`: 단일 라우터 호환 레이어입니다. 주로 기존 호출부, E2E 쿼리 생성 테스트, 라우팅 단위 테스트에서 사용합니다.
 - 복합질문 검증은 `langgraph_query.py` 기준으로 보는 것이 맞고, `nl_query.py`는 혼합 의도를 완전하게 다루는 목적이 아닙니다.
+
+추가 가드레일:
+- `query_retrieval.py`가 질문에서 intent와 핵심 슬롯을 먼저 추출하고, `live_catalog.py`가 실제 DB의 직급·직위·평가등급·규칙 행을 catalog로 노출합니다.
+- `query_rules.py`는 retrieval 결과를 기반으로 TypeQL/Cypher 템플릿을 우선 선택하고, 그 뒤에만 LLM 자유 생성을 사용합니다.
+- `BOK_USE_LIVE_CATALOG`, `BOK_USE_KEY_BINDING`으로 live catalog와 key binding 사용 여부를 제어할 수 있습니다.
+- `BOK_QUERY_TRACE_DIR`, `BOK_FAILURE_TRACE_DIR`를 지정하면 query trace와 실패 artifact를 JSON으로 저장합니다.
 
 ### 6. Neo4j 브라우저 시각화
 
@@ -458,7 +471,7 @@ PYTHONPATH=src python tests/validate_data.py typedb
 
 #### NL 파이프라인 테스트 (test_nl_pipeline.py)
 
-DB 직접 쿼리, E2E 쿼리 생성, LangGraph 스모크, 복합질문 비교를 하나의 스크립트에서 실행할 수 있습니다.
+DB 직접 쿼리, E2E 쿼리 생성, LangGraph 스모크, 복합질문 비교를 하나의 스크립트에서 실행할 수 있습니다. E2E 실패 시 질문, 계획, 결과 행, 오류를 artifact로 저장할 수 있습니다.
 
 ```bash
 # 직접 쿼리 스모크 테스트
@@ -484,6 +497,12 @@ PYTHONPATH=src python tests/test_nl_pipeline.py all all
 
 # 데이터 검증
 PYTHONPATH=src python tests/validate_data.py all
+
+# retrieval planner 회귀
+PYTHONPATH=src python -m pytest tests/test_query_rules.py -q
+
+# 자연어 회귀 케이스
+PYTHONPATH=src python -m pytest tests/test_nl_regressions.py -q
 ```
 
 최근 확인한 결과:
@@ -495,12 +514,14 @@ PYTHONPATH=src python tests/validate_data.py all
 - `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb` → TypeDB 2/2 통과
 - `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j` → Neo4j 2/2 통과
 - `PYTHONPATH=src python tests/test_nl_pipeline.py compare` → 복합질문 4건 비교표 출력, TypeDB/Neo4j 전부 PASS
-- `PYTHONPATH=src pytest tests/test_query_rules.py tests/test_nl_router.py tests/test_typedb_router.py` → 9건 통과
+- `PYTHONPATH=src python -m pytest tests/test_query_rules.py -q` → 8건 통과
+- `PYTHONPATH=src python -m pytest tests/test_query_rules.py tests/test_nl_regressions.py -q` → 22건 통과
 
 참고:
 
 - [tests/test_nl_router.py](tests/test_nl_router.py), [tests/test_typedb_router.py](tests/test_typedb_router.py)는 `nl_query.py` 호환 레이어를 기준으로 라우팅 분기를 검증합니다.
-- [tests/test_query_rules.py](tests/test_query_rules.py)는 규칙 기반 쿼리 템플릿과 보정 로직을 검증합니다.
+- [tests/test_query_rules.py](tests/test_query_rules.py)는 retrieval-guided planner와 규칙 기반 보정 로직을 검증합니다.
+- [tests/test_nl_regressions.py](tests/test_nl_regressions.py)는 paraphrase와 보수 패키지 질의를 두 백엔드에 공통으로 재생합니다.
 
 직접 쿼리 테스트 항목: 5급 11호봉, 3급 50호봉, 팀장 3급 직책급, G5 초봉(JOIN), 1급 EX 차등액, 미국 1급 국외본봉, 부서장가 EX 상여금, 임금피크제 2년차, 3급 호봉수, 개정이력 건수, 총재 보수기준, 5급 호봉 범위
 
@@ -615,5 +636,5 @@ PYTHONPATH=src python tests/validate_data.py all
 - 저장소의 현재 기준선은 `validate_data.py`, `test_nl_pipeline.py direct`, `test_nl_pipeline.py e2e`, `test_nl_pipeline.py langgraph`, `test_nl_pipeline.py compare` 입니다.
 - 현재 기본 LLM 경로는 OpenAI 호환 엔드포인트(`OPENAI_BASE_URL`)이며, Ollama Qwen은 선택 옵션으로 유지됩니다.
 - 단일 질의 생성과 핵심 조회 검증은 `direct`와 `e2e`에서 확인하고, 복합질문 품질은 `langgraph`와 `compare`에서 확인합니다.
-- `tests/test_nl_router.py`, `tests/test_typedb_router.py`는 호환용 `nl_query.py` 레이어를 검증하고, `tests/test_query_rules.py`는 규칙 기반 템플릿과 보정 로직을 검증합니다.
+- `tests/test_nl_router.py`, `tests/test_typedb_router.py`는 호환용 `nl_query.py` 레이어를 검증하고, `tests/test_query_rules.py`, `tests/test_nl_regressions.py`는 retrieval-guided planner와 paraphrase 회귀를 검증합니다.
 - 현재 복합질문 안정성은 규칙 기반 템플릿과 Planner 후처리에 일부 의존합니다. 실서비스 수준으로 더 확장하려면 few-shot 예시 보강, 질의 유형 세분화, 실패한 쿼리에 대한 재작성 루프가 추가로 필요합니다.

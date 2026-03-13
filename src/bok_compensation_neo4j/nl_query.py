@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from .config import Neo4jConfig
 from .connection import get_driver
 from bok_compensation.llm import create_chat_model
+from bok_compensation.query_retrieval import build_trace_context, maybe_write_query_trace
 from bok_compensation.query_rules import neo4j_rule_based_plan, repair_neo4j_plan
 
 
@@ -68,9 +69,13 @@ def semantic_answer(question: str, rules_context: str) -> str:
 
 
 def nl_to_cypher(question: str) -> Dict[str, Any]:
+    trace_context = build_trace_context(question, backend="neo4j")
     fallback = neo4j_rule_based_plan(question)
     if fallback is not None:
-        return fallback
+        plan = dict(fallback)
+        plan["trace"] = trace_context
+        maybe_write_query_trace(question, backend="neo4j", trace_context=trace_context, plan=plan)
+        return plan
 
     prompt = f"""당신은 Neo4j Cypher 전문가입니다.
 다음 그래프 스키마를 바탕으로 질문에 맞는 조회용 Cypher를 생성하세요.
@@ -99,7 +104,11 @@ def nl_to_cypher(question: str) -> Dict[str, Any]:
 질문: {question}
 """
     plan = _invoke_json(prompt)
-    return repair_neo4j_plan(question, plan)
+    repaired = repair_neo4j_plan(question, plan)
+    repaired = dict(repaired)
+    repaired["trace"] = trace_context
+    maybe_write_query_trace(question, backend="neo4j", trace_context=trace_context, plan=repaired)
+    return repaired
 
 
 def execute_cypher(cypher: str) -> List[Dict[str, Any]]:

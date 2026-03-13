@@ -49,3 +49,28 @@ def test_repair_neo4j_plan_rewrites_common_bad_properties():
 
     assert "직급코드" in repaired["cypher"]
     assert "국외기본급액" in repaired["cypher"]
+
+
+def test_typedb_retrieval_plan_handles_g5_paraphrase():
+    plan = typedb_rule_based_plan("종합기획직 G5의 초임호봉과 본봉 액수를 알려줘")
+
+    assert plan is not None
+    assert "초임호봉결정" in plan["typeql"]
+    assert any(variable["name"] == "salary" for variable in plan["variables"])
+
+
+def test_typedb_retrieval_plan_handles_revision_history_paraphrase():
+    plan = typedb_rule_based_plan("보수규정이 언제 개정됐는지 이력 목록 보여줘")
+
+    assert plan is not None
+    assert "개정이력" in plan["typeql"]
+    assert "개정일" in plan["typeql"]
+
+
+def test_neo4j_retrieval_plan_handles_overseas_salary_paraphrase():
+    plan = neo4j_rule_based_plan("미국 파견 2급 직원 해외 본봉은?")
+
+    assert plan is not None
+    assert "국외본봉기준" in plan["cypher"]
+    assert "국가명: '미국'" in plan["cypher"]
+    assert "직급코드: '2급'" in plan["cypher"]

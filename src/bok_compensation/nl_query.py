@@ -10,6 +10,7 @@ from typedb.driver import TransactionType
 from .config import TypeDBConfig
 from .connection import get_driver
 from .llm import create_chat_model
+from .query_retrieval import build_trace_context, maybe_write_query_trace
 from .query_rules import repair_typedb_plan, typedb_rule_based_plan
 
 
@@ -86,9 +87,13 @@ def semantic_answer(question: str, rules_context: str) -> str:
 
 
 def nl_to_typeql(question: str) -> Dict[str, Any]:
+    trace_context = build_trace_context(question, backend="typedb")
     fallback = typedb_rule_based_plan(question)
     if fallback is not None:
-        return fallback
+        plan = dict(fallback)
+        plan["trace"] = trace_context
+        maybe_write_query_trace(question, backend="typedb", trace_context=trace_context, plan=plan)
+        return plan
 
     prompt = f"""당신은 TypeDB 3.x TypeQL READ 쿼리 전문가입니다.
 사용자 질문을 TypeDB 3.x 조회 쿼리로 바꾸세요.
@@ -131,7 +136,11 @@ def nl_to_typeql(question: str) -> Dict[str, Any]:
 질문: {question}
 """
     plan = _invoke_json(prompt)
-    return repair_typedb_plan(question, plan)
+    repaired = repair_typedb_plan(question, plan)
+    repaired = dict(repaired)
+    repaired["trace"] = trace_context
+    maybe_write_query_trace(question, backend="typedb", trace_context=trace_context, plan=repaired)
+    return repaired
 
 
 def execute_typeql(typeql: str, variables: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
