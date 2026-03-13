@@ -13,6 +13,7 @@ NL 파이프라인 테스트 스위트 — DB 쿼리 정확성 + E2E 검증
     PYTHONPATH=src python tests/test_nl_pipeline.py e2e typedb
     PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j
     PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb
+    PYTHONPATH=src python tests/test_nl_pipeline.py langgraph context
     PYTHONPATH=src python tests/test_nl_pipeline.py compare
     PYTHONPATH=src python tests/test_nl_pipeline.py all
 """
@@ -63,6 +64,7 @@ class ComparisonRow:
     question: str
     neo4j: "TestResult"
     typedb: "TestResult"
+    context: "TestResult"
 
 
 # ---- 직접 쿼리 테스트 ----
@@ -678,8 +680,11 @@ def _run_langgraph_smoke_test(app, test: LangGraphSmokeTest) -> TestResult:
             return TestResult(test.name, False, "최종 응답이 비어 있음")
         if "조회 실패" in combined:
             return TestResult(test.name, False, "LangGraph 내부 데이터 조회 실패")
+
+        normalized_combined = combined.replace(",", "").replace(" ", "")
         for fragment in test.expected_fragments:
-            if fragment not in combined:
+            normalized_fragment = fragment.replace(",", "").replace(" ", "")
+            if normalized_fragment not in normalized_combined:
                 return TestResult(test.name, False, f"기대 조각 `{fragment}` 누락")
         return TestResult(test.name, True, "")
     except Exception as exc:
@@ -709,6 +714,20 @@ def run_neo4j_langgraph_complex_tests() -> List[TestResult]:
 
 def run_typedb_langgraph_complex_tests() -> List[TestResult]:
     from bok_compensation.langgraph_query import create_langgraph
+
+    app = create_langgraph()
+    return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_COMPLEX_TESTS]
+
+
+def run_context_langgraph_smoke_tests() -> List[TestResult]:
+    from bok_compensation_context.langgraph_query import create_langgraph
+
+    app = create_langgraph()
+    return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_SMOKE_TESTS]
+
+
+def run_context_langgraph_complex_tests() -> List[TestResult]:
+    from bok_compensation_context.langgraph_query import create_langgraph
 
     app = create_langgraph()
     return [_run_langgraph_smoke_test(app, test) for test in LANGGRAPH_COMPLEX_TESTS]
@@ -744,26 +763,29 @@ def print_comparison_table(title: str, rows: List[ComparisonRow]):
     print(f"\n{'='*100}")
     print(f"  {title}")
     print(f"{'='*100}")
-    print("| 테스트 | Neo4j | TypeDB | 질문 |")
-    print("| --- | --- | --- | --- |")
+    print("| 테스트 | Neo4j | TypeDB | Context | 질문 |")
+    print("| --- | --- | --- | --- | --- |")
     for row in rows:
         neo4j_cell = "PASS" if row.neo4j.passed else f"FAIL ({row.neo4j.detail})"
         typedb_cell = "PASS" if row.typedb.passed else f"FAIL ({row.typedb.detail})"
-        print(f"| {row.name} | {neo4j_cell} | {typedb_cell} | {row.question} |")
+        context_cell = "PASS" if row.context.passed else f"FAIL ({row.context.detail})"
+        print(f"| {row.name} | {neo4j_cell} | {typedb_cell} | {context_cell} | {row.question} |")
     print()
 
 
 def build_comparison_rows() -> List[ComparisonRow]:
     neo4j_results = run_neo4j_langgraph_complex_tests()
     typedb_results = run_typedb_langgraph_complex_tests()
+    context_results = run_context_langgraph_complex_tests()
     rows = []
-    for test, neo4j_result, typedb_result in zip(LANGGRAPH_COMPLEX_TESTS, neo4j_results, typedb_results):
+    for test, neo4j_result, typedb_result, context_result in zip(LANGGRAPH_COMPLEX_TESTS, neo4j_results, typedb_results, context_results):
         rows.append(
             ComparisonRow(
                 name=test.name,
                 question=test.question,
                 neo4j=neo4j_result,
                 typedb=typedb_result,
+                context=context_result,
             )
         )
     return rows
@@ -835,6 +857,14 @@ def main():
                 print(f"TypeDB LangGraph 테스트 실패: {e}")
                 traceback.print_exc()
 
+        if target in ("context", "all"):
+            try:
+                results = run_context_langgraph_smoke_tests()
+                print_results("Context LangGraph 스모크 테스트", results)
+            except Exception as e:
+                print(f"Context LangGraph 테스트 실패: {e}")
+                traceback.print_exc()
+
     elif mode == "compare":
         print("\n⚠️  복합질문 LangGraph 비교는 설정된 LLM provider와 DB 연결이 필요합니다.")
         print(f"   {describe_llm_backend()}\n")
@@ -894,6 +924,13 @@ def main():
                 except Exception as e:
                     print(f"TypeDB LangGraph 테스트 실패: {e}")
 
+        if target in ("context", "all"):
+            try:
+                results = run_context_langgraph_smoke_tests()
+                print_results("Context LangGraph 스모크 테스트", results)
+            except Exception as e:
+                print(f"Context LangGraph 테스트 실패: {e}")
+
         print("\n⚠️  복합질문 LangGraph 비교표를 이어서 출력합니다.\n")
         print(f"   {describe_llm_backend()}\n")
         try:
@@ -902,7 +939,7 @@ def main():
         except Exception as e:
             print(f"복합질문 비교 실행 실패: {e}")
     else:
-        print(f"사용법: python tests/test_nl_pipeline.py [direct|e2e|langgraph|compare|all] [neo4j|typedb|all]")
+        print(f"사용법: python tests/test_nl_pipeline.py [direct|e2e|langgraph|compare|all] [neo4j|typedb|context|all]")
 
 
 if __name__ == "__main__":

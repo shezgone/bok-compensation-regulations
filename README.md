@@ -130,6 +130,11 @@ bok-compensation-regulations/
 │       ├── graph_query_demo.py       # Cypher 그래프 탐색 데모
 │       ├── nl_query.py               # 레거시 호환 자연어 진입점
 │       └── langgraph_query.py        # LangGraph 기반 자연어 질의 파이프라인
+│   └── bok_compensation_context/     # 텍스트/마크다운 컨텍스트 비교용 구현
+│       ├── __init__.py
+│       ├── context_query.py          # 전처리 문서 기반 직접 추론
+│       ├── langgraph_query.py        # 비교용 LangGraph 래퍼
+│       └── regulation_context.md     # 조문+표 전처리 문서
 ├── schema/
 │   └── compensation_regulation.tql   # TypeQL 온톨로지 스키마 (v2)
 ├── docs/
@@ -258,7 +263,11 @@ PYTHONPATH=src python -m bok_compensation_neo4j.langgraph_query \
 PYTHONPATH=src python -m bok_compensation_neo4j.langgraph_query \
   "기한부 고용계약자는 상여금을 받을 수 있어?"
 
-# 복합질문 비교표 출력
+# Context 문서 기반 비교용 질문
+PYTHONPATH=src python -m bok_compensation_context.langgraph_query \
+  "기한부 고용계약자가 상여금을 받을 수 있는지와 G5 직원의 초봉을 함께 알려줘."
+
+# 복합질문 3-way 비교표 출력
 PYTHONPATH=src python tests/test_nl_pipeline.py compare
 ```
 
@@ -272,6 +281,7 @@ PYTHONPATH=src python tests/test_nl_pipeline.py compare
 추가 가드레일:
 - `query_retrieval.py`가 질문에서 intent와 핵심 슬롯을 먼저 추출하고, `live_catalog.py`가 실제 DB의 직급·직위·평가등급·규칙 행을 catalog로 노출합니다.
 - `query_rules.py`는 retrieval 결과를 기반으로 TypeQL/Cypher 템플릿을 우선 선택하고, 그 뒤에만 LLM 자유 생성을 사용합니다.
+- `bok_compensation_context`는 같은 질문을 그래프 DB 없이 전처리 문서만으로 답하게 하는 비교용 경로입니다.
 - `BOK_USE_LIVE_CATALOG`, `BOK_USE_KEY_BINDING`으로 live catalog와 key binding 사용 여부를 제어할 수 있습니다.
 - `BOK_QUERY_TRACE_DIR`, `BOK_FAILURE_TRACE_DIR`를 지정하면 query trace와 실패 artifact를 JSON으로 저장합니다.
 
@@ -488,6 +498,7 @@ PYTHONPATH=src python tests/test_nl_pipeline.py e2e neo4j
 # LangGraph 스모크 테스트
 PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb
 PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j
+PYTHONPATH=src python tests/test_nl_pipeline.py langgraph context
 
 # 복합질문 비교표
 PYTHONPATH=src python tests/test_nl_pipeline.py compare
@@ -513,7 +524,8 @@ PYTHONPATH=src python -m pytest tests/test_nl_regressions.py -q
 - `PYTHONPATH=src python tests/test_nl_pipeline.py e2e neo4j` → Neo4j 6/6 통과
 - `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph typedb` → TypeDB 2/2 통과
 - `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph neo4j` → Neo4j 2/2 통과
-- `PYTHONPATH=src python tests/test_nl_pipeline.py compare` → 복합질문 4건 비교표 출력, TypeDB/Neo4j 전부 PASS
+- `PYTHONPATH=src python tests/test_nl_pipeline.py langgraph context` → Context 2/2 통과
+- `PYTHONPATH=src python tests/test_nl_pipeline.py compare` → 복합질문 4건 비교표 출력, TypeDB/Neo4j/Context 전부 PASS
 - `PYTHONPATH=src python -m pytest tests/test_query_rules.py -q` → 8건 통과
 - `PYTHONPATH=src python -m pytest tests/test_query_rules.py tests/test_nl_regressions.py -q` → 22건 통과
 
