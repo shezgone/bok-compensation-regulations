@@ -162,6 +162,28 @@ match
             "explanation": "3급 팀장 EX 기준의 직책급, 연봉차등액, 연봉상한액을 조회합니다.",
         }
 
+    if any(term in question for term in ("이상인", "넘는", "초과")) and "차등액" in question:
+        import re as _re
+        _m = _re.search(r"(\d+)\s*만\s*원", question)
+        threshold = float(_m.group(1)) * 10000 if _m else 2000000.0
+        return {
+            "typeql": f'''
+match
+    $g isa 직급, has 직급코드 $gc;
+    $ev isa 평가결과, has 평가등급 $eg;
+    (적용기준: $d, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+    $d has 차등액 $diff;
+    $diff >= {threshold};
+sort $diff desc;
+'''.strip(),
+            "variables": [
+                {"name": "gc", "type": "string"},
+                {"name": "eg", "type": "string"},
+                {"name": "diff", "type": "double"},
+            ],
+            "explanation": f"연봉차등액이 {int(threshold):,}원 이상인 직급-평가등급 조합을 조회합니다.",
+        }
+
     grade_code = _extract_grade_code(question)
     if grade_code and any(term in question for term in ("본봉 산정", "본봉을 산정", "연봉 산정", "연봉제 본봉")):
         eval_code = None
@@ -254,6 +276,21 @@ MATCH (cap:연봉상한액기준)-[:해당직급]->(g)
 RETURN pp.직책급액 AS ppay, d.차등액 AS diff, cap.연봉상한액 AS cap
 """.strip(),
             "explanation": "3급 팀장 EX 기준의 직책급, 연봉차등액, 연봉상한액을 조회합니다.",
+        }
+
+    if any(term in question for term in ("이상인", "넘는", "초과")) and "차등액" in question:
+        import re as _re
+        _m = _re.search(r"(\d+)\s*만\s*원", question)
+        threshold = float(_m.group(1)) * 10000 if _m else 2000000.0
+        return {
+            "cypher": f'''
+MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급)
+MATCH (d)-[:해당등급]->(e:평가결과)
+WHERE d.차등액 >= {threshold}
+RETURN g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS diff
+ORDER BY diff DESC
+'''.strip(),
+            "explanation": f"연봉차등액이 {int(threshold):,}원 이상인 직급-평가등급 조합을 조회합니다.",
         }
 
     grade_code = _extract_grade_code(question)
