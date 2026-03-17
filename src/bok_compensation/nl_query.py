@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, List, Tuple
 
@@ -19,6 +20,85 @@ try:
         SCHEMA_TEXT = schema_file.read()
 except OSError:
     SCHEMA_TEXT = ""
+
+
+# ---------------------------------------------------------------------------
+# Selective schema injection: 질문 키워드에 따라 관련 스키마 섹션만 주입
+# ---------------------------------------------------------------------------
+
+def _parse_schema_sections(schema_text: str) -> List[Tuple[str, str]]:
+    """Split schema into (tag, content) pairs at ``# ---`` markers."""
+    lines = schema_text.split("\n")
+    sections: List[Tuple[str, str]] = []
+    current_tag = "_preamble"
+    current_lines: List[str] = []
+
+    for line in lines:
+        if line.startswith("# ---") and line.rstrip().endswith("---"):
+            if current_lines:
+                sections.append((current_tag, "\n".join(current_lines)))
+            raw_tag = line.replace("# ---", "").replace("---", "").strip()
+            current_tag = re.sub(r"\s*\(.*\)\s*$", "", raw_tag).strip()
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sections.append((current_tag, "\n".join(current_lines)))
+    return sections
+
+
+_SCHEMA_SECTIONS = _parse_schema_sections(SCHEMA_TEXT)
+
+# 항상 포함되는 핵심 섹션 (엔티티·관계 중심, 속성 정의는 제외 — entity owns 에 이미 포함)
+_CORE_TAGS = {
+    "_preamble", "규정 체계", "인사", "규정 관계", "인사 관계",
+}
+
+# 질문 키워드 → 추가로 포함할 섹션 태그 (엔티티·관계만)
+_TOPIC_MAP: Dict[str, List[str]] = {
+    "호봉":   ["보수 체계", "보수 관계"],
+    "보수":   ["보수 체계", "보수 관계"],
+    "본봉":   ["보수 체계", "보수 관계"],
+    "급여":   ["보수 체계", "보수 관계"],
+    "산정":   ["보수 체계", "보수 관계", "연봉제", "연봉제 관계", "평가"],
+    "수당":   ["보수 체계"],
+    "직책급": ["직책급", "보수 관계"],
+    "상여금": ["상여금", "상여금 관계", "평가"],
+    "상여":   ["상여금", "상여금 관계", "평가"],
+    "연봉":   ["연봉제", "연봉제 관계", "평가", "평가 관계"],
+    "차등":   ["연봉제", "연봉제 관계", "평가", "평가 관계"],
+    "상한":   ["연봉제", "연봉제 관계"],
+    "평가":   ["평가", "평가 관계"],
+    "등급":   ["평가", "평가 관계"],
+    "승급":   ["평가", "평가 관계"],
+    "임금피크": ["임금피크제"],
+    "피크제":   ["임금피크제"],
+    "해외":   ["해외", "해외 관계"],
+    "국외":   ["해외", "해외 관계"],
+    "초임":   ["초임호봉", "초임호봉 관계"],
+    "직렬":   ["인사"],
+    "직군":   ["인사"],
+    "부칙":   ["부칙 엔티티", "규정_대체 관계"],
+    "대체":   ["부칙 엔티티", "규정_대체 관계"],
+    "경과":   ["부칙 엔티티", "규정_대체 관계"],
+    "개정":   ["규정 체계"],
+    "계산":   ["보수 체계", "보수 관계", "연봉제", "연봉제 관계", "평가"],
+}
+
+
+def select_schema_for_question(question: str) -> str:
+    """질문에 관련된 스키마 섹션만 선택하여 반환."""
+    needed = set(_CORE_TAGS)
+    for keyword, tags in _TOPIC_MAP.items():
+        if keyword in question:
+            needed.update(tags)
+
+    parts: List[str] = []
+    for tag, body in _SCHEMA_SECTIONS:
+        if tag in needed:
+            parts.append(body)
+    return "\n".join(parts)
 
 
 def _invoke_text(prompt: str) -> str:
@@ -133,8 +213,8 @@ def nl_to_typeql(question: str) -> Dict[str, Any]:
   "explanation": "쿼리 설명"
 }}
 
-[Schema 일부]
-{SCHEMA_TEXT[:5000]}
+[Schema]
+{select_schema_for_question(question)}
 
 질문: {question}
 """

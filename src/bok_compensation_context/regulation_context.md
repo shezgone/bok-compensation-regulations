@@ -1,8 +1,55 @@
 # 한국은행 보수규정 전처리 문서
 
 이 문서는 LLM이 그래프 DB 없이 보수규정 질의에 답하도록 하기 위한 비교용 컨텍스트 문서다.
-조문은 텍스트로 정리했고, 별표 데이터는 마크다운 테이블로 정리했다.
+조문은 텍스트로 정리했고, 계산과 조회에 직접 필요한 표는 JSON으로, 사람이 읽는 참고 표는 마크다운 테이블로 정리했다.
 금액 단위는 별도 표기가 없으면 원이다.
+
+## 문서 사용 원칙
+
+- 답변은 반드시 이 문서에 있는 규정, 표, 계산 규칙만 근거로 한다.
+- 계산 질문에서는 JSON 블록의 값을 우선 사용한다.
+- 같은 정보가 JSON과 마크다운 표에 모두 있으면 JSON을 기준값으로 사용하고, 마크다운 표는 참고용으로만 본다.
+- 질문에 이미 금액이 주어지면 그 금액은 계산 입력값으로 취급한다.
+- 질문에 평가등급이 직접 주어지면 직급평점 수치는 보조 힌트로만 보고, 실제 계산은 평가등급 열(EX, EE, ME, BE)을 기준으로 한다.
+- 질문에 직책이 함께 주어져도, 별도 지시가 없으면 연봉제본봉 조정 계산에는 직책급을 자동 합산하지 않는다.
+- 질문에 기준일이 포함되어 있어도 이미 해당 시점의 평가등급이 주어졌다면 계산에는 그 평가등급을 그대로 사용한다.
+
+## 용어 정규화
+
+- G5 = 종합기획직원 5급 = 종합기획 5급
+- G3 = 종합기획직원 3급 = 종합기획 3급
+- 직급평점 = 성과평가 점수 = 평가 결과 산정 점수
+- 성과평가 결과 = 평가등급
+- 본봉 조정 = 연봉제본봉 조정
+- 국외본봉 = 해외 기본급 = 주재 본봉
+
+## 적용 제외 및 주의사항
+
+- 기한부 고용계약자는 제14조에 따라 제2장 보수와 제3장 상여금 규정을 적용하지 않으므로 상여금을 받을 수 없다.
+- 연봉 차등액표는 1급, 2급, 3급 직원의 연봉제본봉 조정 계산에 사용한다.
+- 직책급표는 직책급 조회에 사용하며, 연봉제본봉 조정 계산에는 직접 합산하지 않는다.
+- 평가상여금 지급률표는 상여금 계산에 사용하며, 연봉제본봉 조정 계산에는 직접 사용하지 않는다.
+- 연봉 상한액표는 질문이 상한 적용 여부를 묻는 경우에만 사용한다.
+
+## 계산 규칙
+
+### 연봉제본봉 조정
+
+- 적용 조건: 연봉제 적용대상 직원
+- 입력값:
+	- 현재 연봉제 본봉
+	- 직급
+	- 평가등급
+- 조회값:
+	- 연봉 차등액표의 해당 직급 + 평가등급 차등액
+- 공식:
+	- 조정 후 연봉제 본봉 = 현재 연봉제 본봉 + 해당 직급/평가등급의 연봉 차등액
+- 비합산 항목:
+	- 직책급
+	- 상여금
+	- 국외본봉
+- 예시:
+	- 현재 연봉제 본봉이 70,000,000원이고 3급 EE이면 차등액 2,016,000원을 더해 72,016,000원이다.
 
 ## 질의 해석 메모
 
@@ -11,6 +58,38 @@
 - 미국 주재 1급 직원의 국외본봉은 10,780 USD이고, 미국 주재 2급 직원의 국외본봉은 9,760 USD이다.
 - 임금피크제 2년차 기본급 지급률은 0.8이다.
 - 현재 전처리 문서에 정리된 개정이력은 9건이다.
+
+## 질의 예시
+
+Q. G5 직원의 초봉은?
+A. 종합기획직원 5급의 초임호봉은 11호봉이며, 5급 11호봉 본봉은 1,554,000원이다.
+
+Q. 기한부 고용계약자는 상여금을 받을 수 있어?
+A. 받을 수 없다. 기한부 고용계약자는 제14조에 따라 제2장 보수 및 제3장 상여금 규정을 적용하지 않는다.
+
+Q. 미국 주재 2급 직원의 국외본봉은?
+A. 미국 주재 2급 직원의 월 국외본봉은 9,760 USD이다.
+
+Q. 임금피크제 2년차 지급률은?
+A. 임금피크제 2년차 기본급 지급률은 0.8이다.
+
+Q. 보수규정 개정이력은 몇 건이야?
+A. 현재 전처리 문서에 정리된 개정이력은 9건이다.
+
+Q. 3급 EE 등급의 연봉 차등액은?
+A. 3급 EE 등급의 연봉 차등액은 2,016,000원이다.
+
+Q. 현재 연봉제 본봉이 70,000,000원이고 3급 EE이면 조정 후 연봉제 본봉은?
+A. 연봉 차등액표에서 3급 EE 차등액은 2,016,000원이므로, 70,000,000원 + 2,016,000원 = 72,016,000원이다.
+
+Q. 종합기획 3급(G3) 직원이 직급평점 3024점 이상이고, 반장 직책을 맡고 있으며, 연봉제 본봉이 70,000,000원일 때, 성과평가 결과가 EE등급이라면 조정 후 연봉제 본봉은 얼마인가?
+A. 조정 후 연봉제 본봉은 72,016,000원이다. 계산에는 현재 연봉제 본봉 70,000,000원과 3급 EE 차등액 2,016,000원을 사용한다. 반장 직책은 연봉제본봉 조정 공식에 직접 합산하지 않으며, 직급평점 수치와 기준일은 이미 EE등급이 주어진 경우 계산 결과를 바꾸지 않는다.
+
+Q. 현재 연봉제 본봉이 77,000,000원인 3급 직원이 EE등급이면 상한을 넘는가?
+A. 3급 EE 차등액 2,016,000원을 더하면 79,016,000원이다. 3급 연봉 상한액 77,724,000원을 초과한다.
+
+Q. 팀장 3급 직책급은?
+A. 팀장 직위의 3급 연간 직책급액은 1,956,000원이다.
 
 ## 주요 조문
 
@@ -77,7 +156,189 @@
 | 2024-01-18 | 보수규정 개정 |
 | 2025-02-13 | 보수규정 최종 개정 (현행) |
 
-## 초임호봉표
+## 계산용 구조화 데이터(JSON)
+
+### 초임호봉 조회 데이터
+
+```json
+{
+	"table_id": "starting_step_lookup_v1",
+	"title": "별표2 초임호봉표",
+	"purpose": "초임호봉 조회 및 초봉 계산",
+	"key_fields": ["job_family"],
+	"value_fields": ["starting_step"],
+	"rows": [
+		{"job_family": "종합기획직원 5급(G5)", "starting_step": 11, "note": "G5 초임호봉"},
+		{"job_family": "종합기획직원 6급", "starting_step": 6, "note": "6급 초임호봉"},
+		{"job_family": "일반사무직원", "starting_step": 1, "note": "일반사무직원 초임호봉"},
+		{"job_family": "별정직원", "starting_step": 4, "note": "별정직원 초임호봉"},
+		{"job_family": "서무직원", "starting_step": 6, "note": "서무직원 초임호봉"},
+		{"job_family": "청원경찰", "starting_step": 6, "note": "청원경찰 초임호봉"}
+	]
+}
+```
+
+### 연봉제 계산 데이터
+
+```json
+{
+	"table_id": "annual_salary_rules_v1",
+	"title": "연봉제 계산 핵심 데이터",
+	"purpose": "연봉제 본봉 조정, 상한 판정, 임금피크제 계산",
+	"subtables": {
+		"salary_diff": {
+			"key_fields": ["grade", "evaluation_grade"],
+			"value_fields": ["delta_amount"],
+			"unit": "KRW/year",
+			"rows": [
+				{"grade": "1급", "evaluation_grade": "EX", "delta_amount": 3672000},
+				{"grade": "1급", "evaluation_grade": "EE", "delta_amount": 2448000},
+				{"grade": "1급", "evaluation_grade": "ME", "delta_amount": 1224000},
+				{"grade": "1급", "evaluation_grade": "BE", "delta_amount": 0},
+				{"grade": "2급", "evaluation_grade": "EX", "delta_amount": 3348000},
+				{"grade": "2급", "evaluation_grade": "EE", "delta_amount": 2232000},
+				{"grade": "2급", "evaluation_grade": "ME", "delta_amount": 1116000},
+				{"grade": "2급", "evaluation_grade": "BE", "delta_amount": 0},
+				{"grade": "3급", "evaluation_grade": "EX", "delta_amount": 3024000},
+				{"grade": "3급", "evaluation_grade": "EE", "delta_amount": 2016000},
+				{"grade": "3급", "evaluation_grade": "ME", "delta_amount": 1008000},
+				{"grade": "3급", "evaluation_grade": "BE", "delta_amount": 0}
+			]
+		},
+		"salary_cap": {
+			"key_fields": ["grade"],
+			"value_fields": ["cap_amount"],
+			"unit": "KRW/year",
+			"rows": [
+				{"grade": "1급", "cap_amount": 85728000},
+				{"grade": "2급", "cap_amount": 78540000},
+				{"grade": "3급", "cap_amount": 77724000}
+			]
+		},
+		"wage_peak": {
+			"key_fields": ["year"],
+			"value_fields": ["rate"],
+			"unit": "ratio",
+			"rows": [
+				{"year": 1, "rate": 0.9},
+				{"year": 2, "rate": 0.8},
+				{"year": 3, "rate": 0.7}
+			]
+		}
+	}
+}
+```
+
+### 직책급, 상여금, 국외본봉 조회 데이터
+
+```json
+{
+	"table_id": "lookup_tables_v1",
+	"title": "직책급/상여금/국외본봉 조회 데이터",
+	"subtables": {
+		"position_pay": {
+			"key_fields": ["position", "grade"],
+			"value_fields": ["annual_position_pay"],
+			"unit": "KRW/year",
+			"rows": [
+				{"position": "부서장(가)", "grade": "1급", "annual_position_pay": 18192000},
+				{"position": "부서장(가)", "grade": "2급", "annual_position_pay": 16236000},
+				{"position": "부서장(나)", "grade": "1급", "annual_position_pay": 15792000},
+				{"position": "부서장(나)", "grade": "2급", "annual_position_pay": 13836000},
+				{"position": "국소속실장", "grade": "1급", "annual_position_pay": 7692000},
+				{"position": "국소속실장", "grade": "2급", "annual_position_pay": 5736000},
+				{"position": "부장", "grade": "2급", "annual_position_pay": 4824000},
+				{"position": "부장", "grade": "3급", "annual_position_pay": 2868000},
+				{"position": "팀장", "grade": "3급", "annual_position_pay": 1956000},
+				{"position": "팀장", "grade": "4급", "annual_position_pay": 0},
+				{"position": "조사역", "grade": "2급", "annual_position_pay": 3012000},
+				{"position": "조사역", "grade": "3급", "annual_position_pay": 1056000},
+				{"position": "주임조사역(C1)", "grade": "3급", "annual_position_pay": 1956000},
+				{"position": "주임조사역(C1)", "grade": "4급", "annual_position_pay": 0},
+				{"position": "조사역(C2)", "grade": "4급", "annual_position_pay": 1044000},
+				{"position": "조사역(C2)", "grade": "5급", "annual_position_pay": 0},
+				{"position": "조사역(C3)", "grade": "5급", "annual_position_pay": 1044000},
+				{"position": "조사역(C3)", "grade": "6급", "annual_position_pay": 0}
+			]
+		},
+		"bonus_rate": {
+			"key_fields": ["position_group", "evaluation_grade"],
+			"value_fields": ["rate"],
+			"unit": "ratio",
+			"rows": [
+				{"position_group": "부서장(가)", "evaluation_grade": "EX", "rate": 1.0},
+				{"position_group": "부서장(가)", "evaluation_grade": "EE", "rate": 0.85},
+				{"position_group": "부서장(가)", "evaluation_grade": "ME", "rate": 0.70},
+				{"position_group": "부서장(가)", "evaluation_grade": "BE", "rate": 0.0},
+				{"position_group": "부서장(나)", "evaluation_grade": "EX", "rate": 1.0},
+				{"position_group": "부서장(나)", "evaluation_grade": "EE", "rate": 0.85},
+				{"position_group": "부서장(나)", "evaluation_grade": "ME", "rate": 0.70},
+				{"position_group": "부서장(나)", "evaluation_grade": "BE", "rate": 0.0},
+				{"position_group": "팀장", "evaluation_grade": "EX", "rate": 0.85},
+				{"position_group": "팀장", "evaluation_grade": "EE", "rate": 0.70},
+				{"position_group": "팀장", "evaluation_grade": "ME", "rate": 0.55},
+				{"position_group": "팀장", "evaluation_grade": "BE", "rate": 0.0},
+				{"position_group": "주임조사역(C1)", "evaluation_grade": "EX", "rate": 0.70},
+				{"position_group": "주임조사역(C1)", "evaluation_grade": "EE", "rate": 0.55},
+				{"position_group": "주임조사역(C1)", "evaluation_grade": "ME", "rate": 0.40},
+				{"position_group": "주임조사역(C1)", "evaluation_grade": "BE", "rate": 0.0},
+				{"position_group": "조사역(C2)", "evaluation_grade": "EX", "rate": 0.60},
+				{"position_group": "조사역(C2)", "evaluation_grade": "EE", "rate": 0.45},
+				{"position_group": "조사역(C2)", "evaluation_grade": "ME", "rate": 0.30},
+				{"position_group": "조사역(C2)", "evaluation_grade": "BE", "rate": 0.0},
+				{"position_group": "조사역(C3)", "evaluation_grade": "EX", "rate": 0.60},
+				{"position_group": "조사역(C3)", "evaluation_grade": "EE", "rate": 0.45},
+				{"position_group": "조사역(C3)", "evaluation_grade": "ME", "rate": 0.30},
+				{"position_group": "조사역(C3)", "evaluation_grade": "BE", "rate": 0.0}
+			]
+		},
+		"overseas_salary": {
+			"key_fields": ["country", "grade"],
+			"value_fields": ["monthly_amount", "currency"],
+			"rows": [
+				{"country": "미국", "grade": "1급", "monthly_amount": 10780, "currency": "USD"},
+				{"country": "미국", "grade": "2급", "monthly_amount": 9760, "currency": "USD"},
+				{"country": "미국", "grade": "3급", "monthly_amount": 8620, "currency": "USD"},
+				{"country": "독일", "grade": "1급", "monthly_amount": 9100, "currency": "EUR"},
+				{"country": "독일", "grade": "2급", "monthly_amount": 8240, "currency": "EUR"},
+				{"country": "독일", "grade": "3급", "monthly_amount": 7280, "currency": "EUR"},
+				{"country": "일본", "grade": "1급", "monthly_amount": 1210000, "currency": "JPY"},
+				{"country": "일본", "grade": "2급", "monthly_amount": 1097000, "currency": "JPY"},
+				{"country": "일본", "grade": "3급", "monthly_amount": 969000, "currency": "JPY"},
+				{"country": "영국", "grade": "1급", "monthly_amount": 7930, "currency": "GBP"},
+				{"country": "영국", "grade": "2급", "monthly_amount": 7180, "currency": "GBP"},
+				{"country": "영국", "grade": "3급", "monthly_amount": 6350, "currency": "GBP"},
+				{"country": "홍콩", "grade": "1급", "monthly_amount": 83100, "currency": "HKD"},
+				{"country": "홍콩", "grade": "2급", "monthly_amount": 75250, "currency": "HKD"},
+				{"country": "중국", "grade": "1급", "monthly_amount": 64720, "currency": "CNY"},
+				{"country": "중국", "grade": "2급", "monthly_amount": 58630, "currency": "CNY"}
+			]
+		}
+	}
+}
+```
+
+### 본봉 조회 데이터(JSON)
+
+```json
+{
+	"table_id": "salary_steps_v1",
+	"title": "직급/호봉별 본봉 조회 데이터",
+	"purpose": "초봉, 특정 직급 호봉 본봉 조회",
+	"subtables": {
+		"3급": {"unit": "KRW/month", "rows": [{"step": 21, "amount": 3188000}, {"step": 22, "amount": 3300000}, {"step": 23, "amount": 3642000}, {"step": 24, "amount": 3752000}, {"step": 25, "amount": 3869000}, {"step": 26, "amount": 3984000}, {"step": 27, "amount": 4102000}, {"step": 28, "amount": 4419000}, {"step": 29, "amount": 4530000}, {"step": 30, "amount": 4654000}, {"step": 31, "amount": 4763000}, {"step": 32, "amount": 5006000}, {"step": 33, "amount": 5187000}, {"step": 34, "amount": 5312000}, {"step": 35, "amount": 5430000}, {"step": 36, "amount": 5555000}, {"step": 37, "amount": 5690000}, {"step": 38, "amount": 5821000}, {"step": 39, "amount": 5925000}, {"step": 40, "amount": 6032000}, {"step": 41, "amount": 6142000}, {"step": 42, "amount": 6229000}, {"step": 43, "amount": 6316000}, {"step": 44, "amount": 6399000}, {"step": 45, "amount": 6495000}, {"step": 46, "amount": 6583000}, {"step": 47, "amount": 6657000}, {"step": 48, "amount": 6738000}, {"step": 49, "amount": 6812000}, {"step": 50, "amount": 6890000}]},
+		"4급": {"unit": "KRW/month", "rows": [{"step": 16, "amount": 2343000}, {"step": 17, "amount": 2642000}, {"step": 18, "amount": 2754000}, {"step": 19, "amount": 2867000}, {"step": 20, "amount": 2980000}, {"step": 21, "amount": 3093000}, {"step": 22, "amount": 3204000}, {"step": 23, "amount": 3542000}, {"step": 24, "amount": 3662000}, {"step": 25, "amount": 3780000}, {"step": 26, "amount": 3893000}, {"step": 27, "amount": 4095000}, {"step": 28, "amount": 4417000}, {"step": 29, "amount": 4529000}, {"step": 30, "amount": 4650000}, {"step": 31, "amount": 4762000}, {"step": 32, "amount": 4882000}, {"step": 33, "amount": 5057000}, {"step": 34, "amount": 5183000}, {"step": 35, "amount": 5300000}, {"step": 36, "amount": 5421000}, {"step": 37, "amount": 5539000}, {"step": 38, "amount": 5669000}, {"step": 39, "amount": 5778000}, {"step": 40, "amount": 5889000}, {"step": 41, "amount": 5992000}, {"step": 42, "amount": 6082000}, {"step": 43, "amount": 6170000}, {"step": 44, "amount": 6257000}, {"step": 45, "amount": 6340000}, {"step": 46, "amount": 6428000}, {"step": 47, "amount": 6499000}, {"step": 48, "amount": 6576000}, {"step": 49, "amount": 6657000}, {"step": 50, "amount": 6733000}]},
+		"5급": {"unit": "KRW/month", "rows": [{"step": 1, "amount": 579000}, {"step": 2, "amount": 651000}, {"step": 3, "amount": 715000}, {"step": 4, "amount": 787000}, {"step": 5, "amount": 862000}, {"step": 6, "amount": 936000}, {"step": 7, "amount": 1011000}, {"step": 8, "amount": 1096000}, {"step": 9, "amount": 1181000}, {"step": 10, "amount": 1265000}, {"step": 11, "amount": 1554000}, {"step": 12, "amount": 1689000}, {"step": 13, "amount": 1837000}, {"step": 14, "amount": 1977000}, {"step": 15, "amount": 2127000}, {"step": 16, "amount": 2307000}, {"step": 17, "amount": 2579000}, {"step": 18, "amount": 2753000}, {"step": 19, "amount": 2858000}, {"step": 20, "amount": 2973000}, {"step": 21, "amount": 3081000}, {"step": 22, "amount": 3196000}, {"step": 23, "amount": 3535000}, {"step": 24, "amount": 3658000}, {"step": 25, "amount": 3770000}, {"step": 26, "amount": 3889000}, {"step": 27, "amount": 4002000}, {"step": 28, "amount": 4323000}, {"step": 29, "amount": 4440000}, {"step": 30, "amount": 4549000}, {"step": 31, "amount": 4669000}, {"step": 32, "amount": 4780000}, {"step": 33, "amount": 4962000}, {"step": 34, "amount": 5089000}, {"step": 35, "amount": 5209000}, {"step": 36, "amount": 5326000}, {"step": 37, "amount": 5448000}, {"step": 38, "amount": 5574000}, {"step": 39, "amount": 5678000}, {"step": 40, "amount": 5788000}, {"step": 41, "amount": 5894000}, {"step": 42, "amount": 5983000}, {"step": 43, "amount": 6063000}, {"step": 44, "amount": 6153000}, {"step": 45, "amount": 6236000}, {"step": 46, "amount": 6327000}, {"step": 47, "amount": 6400000}, {"step": 48, "amount": 6476000}, {"step": 49, "amount": 6555000}, {"step": 50, "amount": 6635000}]},
+		"6급": {"unit": "KRW/month", "rows": [{"step": 1, "amount": 559000}, {"step": 2, "amount": 620000}, {"step": 3, "amount": 675000}, {"step": 4, "amount": 743000}, {"step": 5, "amount": 805000}, {"step": 6, "amount": 871000}, {"step": 7, "amount": 944000}, {"step": 8, "amount": 1000000}, {"step": 9, "amount": 1045000}, {"step": 10, "amount": 1090000}, {"step": 11, "amount": 1509000}, {"step": 12, "amount": 1591000}, {"step": 13, "amount": 1672000}, {"step": 14, "amount": 1757000}, {"step": 15, "amount": 1835000}, {"step": 16, "amount": 2106000}, {"step": 17, "amount": 2196000}, {"step": 18, "amount": 2286000}, {"step": 19, "amount": 2372000}, {"step": 20, "amount": 2462000}, {"step": 21, "amount": 2640000}, {"step": 22, "amount": 2730000}, {"step": 23, "amount": 2818000}, {"step": 24, "amount": 2909000}, {"step": 25, "amount": 2999000}, {"step": 26, "amount": 3175000}, {"step": 27, "amount": 3267000}, {"step": 28, "amount": 3353000}, {"step": 29, "amount": 3440000}, {"step": 30, "amount": 3523000}, {"step": 31, "amount": 3610000}, {"step": 32, "amount": 3695000}, {"step": 33, "amount": 3782000}, {"step": 34, "amount": 3867000}, {"step": 35, "amount": 3953000}, {"step": 36, "amount": 4035000}, {"step": 37, "amount": 4123000}, {"step": 38, "amount": 4207000}, {"step": 39, "amount": 4290000}, {"step": 40, "amount": 4372000}, {"step": 41, "amount": 4451000}, {"step": 42, "amount": 4537000}, {"step": 43, "amount": 4615000}, {"step": 44, "amount": 4699000}, {"step": 45, "amount": 4781000}, {"step": 46, "amount": 4849000}, {"step": 47, "amount": 4914000}, {"step": 48, "amount": 4982000}, {"step": 49, "amount": 5052000}, {"step": 50, "amount": 5122000}]}
+	}
+}
+```
+
+## 참고용 표 (Markdown)
+
+아래 표는 사람이 읽는 참고용 표현이다. 계산이나 키-값 조회가 필요한 질문에서는 위 JSON 블록을 우선 사용한다.
+
+### 초임호봉표
 
 | 직렬 | 초임호봉 | 비고 |
 | --- | ---: | --- |
