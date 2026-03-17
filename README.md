@@ -300,9 +300,8 @@ TypeDB와 Neo4j 경로는 동일한 파이프라인 구조를 따릅니다:
 ### 안정화 장치
 
 - **`query_retrieval.py`**: 질문에서 intent(salary_calculation, salary_step_table 등)와 슬롯(직급, 평가등급) 추출
-- **`query_rules.py`**: LLM 자유 생성 전에 규칙 기반 TypeQL/Cypher 템플릿 우선 적용
 - **`live_catalog.py`**: 실제 DB에서 바인딩 가능한 값(직급코드, 직위코드 등) 추출
-- **`classify_intent`**: "산정", "본봉", "차등액" 등 수치 키워드를 감지하면 Data 경로로 라우팅
+- **Adaptive hop retrieval**: 기본 2-hop, 조문 중심은 1-hop, 부칙·대체·경과조치는 3-hop까지 확장
 
 ### 선택적 스키마 프롬프트 주입
 
@@ -329,7 +328,7 @@ bok-compensation-regulations/
 ├── src/
 │   ├── bok_compensation/             # TypeDB 구현
 │   │   ├── nl_query.py               #   자연어 → TypeQL → 실행 → 답변
-│   │   ├── query_rules.py            #   규칙 기반 쿼리 템플릿 (범위 필터 포함)
+│   │   ├── planner_utils.py          #   Planner 출력 정규화 유틸리티
 │   │   ├── query_retrieval.py        #   intent·슬롯 추출 엔진
 │   │   ├── live_catalog.py           #   DB 실시간 값 바인딩
 │   │   ├── insert_data.py            #   전체 데이터 적재 (21단계)
@@ -347,7 +346,6 @@ bok-compensation-regulations/
 ├── tests/
 │   ├── validate_data.py              # TypeDB·Neo4j 데이터 정합성 검증
 │   ├── test_nl_pipeline.py           # 4경로 비교 자동화 테스트
-│   ├── test_query_rules.py           # 규칙 엔진 단위 테스트
 │   └── test_nl_router.py            # 라우팅 단위 테스트
 ├── pyproject.toml
 └── README.md
@@ -445,9 +443,6 @@ PYTHONPATH=src python run_comparison_quick.py
 ```bash
 # 데이터 정합성 (TypeDB 101건 + 부칙 4건 + 규정_대체 17건)
 PYTHONPATH=src python tests/validate_data.py all
-
-# 규칙 엔진 단위 테스트
-PYTHONPATH=src python -m pytest tests/test_query_rules.py -q
 
 # 개별 경로 스모크 테스트
 PYTHONPATH=src python -m bok_compensation.langgraph_query "G5 직원의 초봉은?"

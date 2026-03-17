@@ -4,14 +4,14 @@ import sys
 from typing import TypedDict, List, Annotated, Dict, Any
 import operator
 
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END, START
 
 from bok_compensation_neo4j.config import Neo4jConfig
 from bok_compensation_neo4j.connection import get_driver
 from bok_compensation.llm import create_chat_model
-from bok_compensation_neo4j.nl_query import nl_to_cypher
-from bok_compensation.query_rules import normalize_planner_outputs
+from bok_compensation_neo4j.nl_query import run as graph_first_run
+from bok_compensation.planner_utils import normalize_planner_outputs
 
 # ====== 1. 환경 설정 ======
 # 모델 두개 초기화 (JSON 출력이 필요한 노드와 일반 텍스트 노드)
@@ -150,15 +150,11 @@ def data_agent_node(state: AgentState):
     
     for q in queries:
         try:
-            parsed = nl_to_cypher(q)
-            cypher = parsed["cypher"]
-            print(f"  -> 생성된 Cypher 쿼리:\n     {cypher}")
-            
-            db_rows = execute_cypher(cypher)
-            results.append(f"Q: {q}\nDB 조회 결과: {json.dumps(db_rows, ensure_ascii=False)}")
-            print(f"  -> Data 조회 완료: DB 결과 {len(db_rows)}건 리턴")
+            answer = graph_first_run(q)
+            results.append(f"Q: {q}\nGraph-first 답변: {answer}")
+            print("  -> Data 조회 완료: graph-first 파이프라인 응답 리턴")
         except Exception as e:
-            err_msg = f"Q: {q}\n조회 실패: Cypher 생성 또는 실행 에러 ({str(e)})"
+            err_msg = f"Q: {q}\n조회 실패: graph-first 파이프라인 에러 ({str(e)})"
             results.append(err_msg)
             print(f"  -> 에러: {e}")
 
@@ -221,26 +217,29 @@ def create_langgraph():
 
     return workflow.compile()
 
+
+def run(query: str) -> str:
+    app = create_langgraph()
+    final_state = app.invoke({
+        "query": query,
+        "semantic_queries": [],
+        "data_queries": [],
+        "semantic_results": [],
+        "data_results": [],
+    })
+    return final_state["final_answer"]
+
 # ====== 5. 실행 엔트리포인트 ======
 def run_langgraph(query: str):
-    app = create_langgraph()
-    
     print("=" * 70)
     print(f"🚀 [LangGraph 4기통 Agent 시작]\n질의: {query}")
     print("=" * 70)
-    
-    final_state = app.invoke({
-        "query": query, 
-        "semantic_queries": [], 
-        "data_queries": [], 
-        "semantic_results": [], 
-        "data_results": []
-    })
+    final_answer = run(query)
     
     print("\n" + "=" * 70)
     print("✅ [최종 응답 (Summary Agent)]")
     print("=" * 70)
-    print(final_state["final_answer"])
+    print(final_answer)
     print("=" * 70)
 
 if __name__ == "__main__":

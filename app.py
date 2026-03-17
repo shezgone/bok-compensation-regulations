@@ -4,8 +4,12 @@ import os
 import sys
 import time
 import traceback
+import json
 
 import streamlit as st
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # src 경로 추가
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -23,25 +27,29 @@ st.set_page_config(
 st.title("🏛️ 한국은행 보수규정 — 4-Way 아키텍처 비교 데모")
 st.caption("TypeDB KG RAG · Neo4j Graph RAG · Context RAG · Base LLM")
 
+if "question_input" not in st.session_state:
+    st.session_state["question_input"] = ""
 
 # ---------------------------------------------------------------------------
 # 아키텍처별 실행 함수 (lazy import — 연결 실패 시 graceful)
 # ---------------------------------------------------------------------------
 
 def _run_typedb(question: str) -> str:
-    from bok_compensation.nl_query import run as typedb_run
-    return typedb_run(question)
+    from bok_compensation.nl_query import run_with_trace as typedb_run_with_trace
+
+    return typedb_run_with_trace(question)
 
 
 def _run_neo4j(question: str) -> str:
-    from bok_compensation_neo4j.nl_query import run as neo4j_run
-    return neo4j_run(question)
+    from bok_compensation_neo4j.nl_query import run_with_trace as neo4j_run_with_trace
+
+    return neo4j_run_with_trace(question)
 
 
 def _run_context_rag(question: str) -> str:
-    from bok_compensation_context.context_query import answer_with_context
-    answer, _ = answer_with_context(question)
-    return answer
+    from bok_compensation_context.context_query import run_with_trace as context_run_with_trace
+
+    return context_run_with_trace(question)
 
 
 def _run_base_llm(question: str) -> str:
@@ -50,7 +58,49 @@ def _run_base_llm(question: str) -> str:
 
     model = create_chat_model(temperature=0.0)
     response = model.invoke([HumanMessage(content=question)])
-    return response.content
+    return {
+        "answer": response.content,
+        "trace": {
+            "question": question,
+            "mode": "direct_llm",
+        },
+    }
+
+
+def _render_trace(trace: dict) -> None:
+    entities = trace.get("entities")
+    if entities is not None:
+        st.markdown("**추출 엔티티**")
+        st.code(json.dumps(entities, ensure_ascii=False, indent=2), language="json")
+
+    selected_sections = trace.get("selected_sections")
+    if selected_sections is not None:
+        st.markdown("**선택 섹션**")
+        st.write(", ".join(selected_sections) if selected_sections else "없음")
+
+    section_count = trace.get("section_count")
+    if section_count is not None:
+        st.caption(f"선택 섹션 수: {section_count}")
+
+    rules_context = trace.get("rules_context")
+    if rules_context is not None:
+        st.markdown("**규정 컨텍스트**")
+        st.code(rules_context or "없음", language="text")
+
+    graph_context = trace.get("graph_context")
+    if graph_context is not None:
+        st.markdown("**그래프 컨텍스트**")
+        st.code(graph_context or "없음", language="text")
+
+    context_excerpt = trace.get("context_excerpt")
+    if context_excerpt is not None:
+        st.markdown("**문서 컨텍스트**")
+        st.code(context_excerpt or "없음", language="markdown")
+
+    mode = trace.get("mode")
+    if mode is not None:
+        st.markdown("**실행 모드**")
+        st.write(mode)
 
 
 ARCHITECTURES = {
@@ -112,7 +162,6 @@ with st.sidebar:
     for eq in EXAMPLE_QUESTIONS:
         if st.button(f"[{eq['id']}] {eq['label']}", key=eq["id"], use_container_width=True):
             st.session_state["question_input"] = eq["question"]
-            st.session_state["expected_answer"] = eq["answer"]
 
     st.divider()
     st.caption("한국은행 보수규정 Graph RAG PoC\n\nTypeDB 3.x · Neo4j 5.x · LangChain")
@@ -123,14 +172,16 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 question = st.text_area(
     "💬 질문을 입력하세요",
-    value=st.session_state.get("question_input", ""),
     height=120,
     placeholder="예: 3급 팀장이며 성과평가 EX 등급인 직원의 직책급을 조회하시오.",
-    key="question_text_area",
+    key="question_input",
 )
 
-# 예시 질문의 정답 표시
-expected = st.session_state.get("expected_answer", "")
+# 예시 질문의 정답 표시: 현재 질문이 예시와 정확히 일치할 때만 노출
+expected = next(
+    (example["answer"] for example in EXAMPLE_QUESTIONS if example["question"] == question),
+    "",
+)
 if expected:
     st.info(f"📌 **기대 정답:** {expected}")
 
@@ -140,9 +191,10 @@ with col_run:
 with col_clear:
     if st.button("🗑️ 초기화"):
         st.session_state["question_input"] = ""
-        st.session_state["expected_answer"] = ""
         st.session_state.pop("results", None)
         st.rerun()
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -164,10 +216,11 @@ if run_clicked and question.strip():
 
             start = time.time()
             try:
-                answer = arch_info["fn"](question.strip())
+                response = arch_info["fn"](question.strip())
                 elapsed = time.time() - start
                 results[arch_name] = {
-                    "answer": answer,
+                    "answer": response["answer"],
+                    "trace": response.get("trace") or {},
                     "elapsed": elapsed,
                     "error": None,
                 }
@@ -175,6 +228,7 @@ if run_clicked and question.strip():
                 elapsed = time.time() - start
                 results[arch_name] = {
                     "answer": None,
+                    "trace": None,
                     "elapsed": elapsed,
                     "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
                 }
@@ -188,7 +242,7 @@ if run_clicked and question.strip():
 # ---------------------------------------------------------------------------
 # 결과 렌더링
 # ---------------------------------------------------------------------------
-if "results" in st.session_state:
+if st.session_state.get("results"):
     results = st.session_state["results"]
 
     st.divider()
@@ -209,18 +263,5 @@ if "results" in st.session_state:
             else:
                 st.success("실행 완료")
                 st.markdown(result["answer"])
-
-    # 비교 테이블
-    st.divider()
-    st.subheader("📋 요약 비교표")
-
-    table_data = []
-    for arch_name, result in results.items():
-        arch_info = ARCHITECTURES[arch_name]
-        table_data.append({
-            "아키텍처": f"{arch_info['icon']} {arch_name}",
-            "소요 시간": f"{result['elapsed']:.1f}초",
-            "상태": "✅ 성공" if not result["error"] else "❌ 오류",
-            "답변 (요약)": (result["answer"][:200] + "..." if result["answer"] and len(result["answer"]) > 200 else result["answer"]) or "—",
-        })
-    st.table(table_data)
+                with st.expander("Trace"):
+                    _render_trace(result.get("trace") or {})

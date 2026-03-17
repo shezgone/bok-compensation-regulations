@@ -4,15 +4,15 @@ import sys
 from typing import TypedDict, List, Annotated, Dict, Any
 import operator
 
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END, START
 
 from typedb.driver import TransactionType
 from bok_compensation.config import TypeDBConfig
 from bok_compensation.connection import get_driver
 from bok_compensation.llm import create_chat_model
-from bok_compensation.nl_query import nl_to_typeql
-from bok_compensation.query_rules import normalize_planner_outputs
+from bok_compensation.nl_query import run as graph_first_run
+from bok_compensation.planner_utils import normalize_planner_outputs
 
 # ====== 1. 환경 설정 ======
 llm_json = create_chat_model(temperature=0.0, json_output=True)
@@ -181,19 +181,11 @@ def data_agent_node(state: AgentState):
     
     for q in queries:
         try:
-            parsed = nl_to_typeql(q)
-            typeql = parsed.get("typeql", "")
-            variables = parsed.get("variables", [])
-            print(f"  -> 생성된 TypeQL:\n{typeql}")
-            
-            for v in variables:
-                v["name"] = v["name"].replace("$", "")
-                
-            db_rows = execute_typeql(typeql, variables)
-            results.append(f"Q: {q}\nDB 조회 결과: {json.dumps(db_rows, ensure_ascii=False)}")
-            print(f"  -> Data 조회 완료: DB 결과 {len(db_rows)}건 리턴")
+            answer = graph_first_run(q)
+            results.append(f"Q: {q}\nGraph-first 답변: {answer}")
+            print("  -> Data 조회 완료: graph-first 파이프라인 응답 리턴")
         except Exception as e:
-            err_msg = f"Q: {q}\n조회 실패: TypeQL 생성/실행 에러 ({str(e)})"
+            err_msg = f"Q: {q}\n조회 실패: graph-first 파이프라인 에러 ({str(e)})"
             results.append(err_msg)
             print(f"  -> 에러: {e}")
 
@@ -244,26 +236,29 @@ def create_langgraph():
 
     return workflow.compile()
 
+
+def run(query: str) -> str:
+    app = create_langgraph()
+    final_state = app.invoke({
+        "query": query,
+        "semantic_queries": [],
+        "data_queries": [],
+        "semantic_results": [],
+        "data_results": [],
+    })
+    return final_state["final_answer"]
+
 # ====== 5. 실행 엔트리포인트 ======
 def run_langgraph(query: str):
-    app = create_langgraph()
-    
     print("=" * 70)
     print(f"🚀 [LangGraph TypeDB Multi-Agent 시작]\n질의: {query}")
     print("=" * 70)
-    
-    final_state = app.invoke({
-        "query": query, 
-        "semantic_queries": [], 
-        "data_queries": [], 
-        "semantic_results": [], 
-        "data_results": []
-    })
+    final_answer = run(query)
     
     print("\n" + "=" * 70)
     print("✅ [최종 응답 (Summary Agent)]")
     print("=" * 70)
-    print(final_state["final_answer"])
+    print(final_answer)
     print("=" * 70)
 
 if __name__ == "__main__":

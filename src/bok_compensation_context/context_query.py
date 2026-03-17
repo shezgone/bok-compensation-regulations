@@ -130,6 +130,19 @@ def answer_with_context(question: str) -> Tuple[str, List[Dict[str, str]]]:
     return str(response.content), sections
 
 
+def run_with_trace(question: str) -> Dict[str, object]:
+    answer, sections = answer_with_context(question)
+    return {
+        "answer": answer,
+        "trace": {
+            "question": question,
+            "selected_sections": [section["title"] for section in sections],
+            "section_count": len(sections),
+            "context_excerpt": "\n\n".join(section["content"] for section in sections),
+        },
+    }
+
+
 def run(question: str) -> str:
     answer, _ = answer_with_context(question)
     return answer

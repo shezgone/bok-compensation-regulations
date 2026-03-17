@@ -1,64 +1,63 @@
-from types import SimpleNamespace
-
 from bok_compensation_neo4j import nl_query
 
 
-def test_run_routes_semantic_queries(monkeypatch):
+def test_run_uses_graph_first_semantic_context(monkeypatch):
     calls = []
 
-    class DummyDriver:
-        def close(self):
-            calls.append("close")
+    monkeypatch.setattr(nl_query, "extract_entities", lambda question: {"topics": ["조문"], "article_no": 14})
 
-    monkeypatch.setattr(nl_query, "classify_intent", lambda question: "Semantic")
-    monkeypatch.setattr(nl_query, "Neo4jConfig", lambda: SimpleNamespace(database="test-db"))
-    monkeypatch.setattr(nl_query, "get_driver", lambda config: DummyDriver())
-
-    def fake_get_rules_subgraph(driver):
-        calls.append(("rules", driver.__class__.__name__))
+    def fake_fetch_relevant_rules(question, entities):
+        calls.append(("rules", question, entities))
         return "Rule 14: 기한부 고용계약자는 상여금 미지급"
 
-    def fake_semantic_answer(question, rules_context):
-        calls.append(("semantic_answer", question, rules_context))
+    def fake_fetch_subgraph(question_entities, question):
+        calls.append(("graph", question_entities, question))
+        return ""
+
+    def fake_generate_answer(question, entities, rules_context, graph_context):
+        calls.append(("answer", question, entities, rules_context, graph_context))
         return "상여금을 받을 수 없습니다."
 
-    monkeypatch.setattr(nl_query, "get_rules_subgraph", fake_get_rules_subgraph)
-    monkeypatch.setattr(nl_query, "semantic_answer", fake_semantic_answer)
+    monkeypatch.setattr(nl_query, "fetch_relevant_rules", fake_fetch_relevant_rules)
+    monkeypatch.setattr(nl_query, "fetch_subgraph_neo4j", fake_fetch_subgraph)
+    monkeypatch.setattr(nl_query, "generate_answer", fake_generate_answer)
 
     result = nl_query.run("기한부 고용계약자는 상여금을 받을 수 있어?")
 
     assert result == "상여금을 받을 수 없습니다."
-    assert ("rules", "DummyDriver") in calls
-    assert any(call[0] == "semantic_answer" for call in calls if isinstance(call, tuple))
+    assert calls[0][0] == "rules"
+    assert calls[1][0] == "graph"
+    assert calls[2][0] == "answer"
 
 
-def test_run_routes_data_queries(monkeypatch):
+def test_run_uses_graph_first_data_context(monkeypatch):
     calls = []
 
-    monkeypatch.setattr(nl_query, "classify_intent", lambda question: "Data")
     monkeypatch.setattr(
         nl_query,
-        "nl_to_cypher",
-        lambda question: {
-            "cypher": "MATCH (n) RETURN 1 AS value",
-            "explanation": "테스트 쿼리",
-        },
+        "extract_entities",
+        lambda question: {"topics": ["연봉차등"], "grade": None, "eval": None, "amount_threshold": 2000000.0},
     )
 
-    def fake_execute_cypher(cypher):
-        calls.append(("execute", cypher))
-        return [{"value": 1}]
+    def fake_fetch_rules(question, entities):
+        calls.append(("rules", question, entities))
+        return "제4조: 연봉차등액을 적용한다."
 
-    def fake_generate_answer(question, rows):
-        calls.append(("answer", question, rows))
+    def fake_fetch_subgraph(entities, question):
+        calls.append(("graph", entities, question))
+        return "[연봉차등 2-hop]\n- grade=1급, eval=EX, diff=3672000"
+
+    def fake_generate_answer(question, entities, rules_context, graph_context):
+        calls.append(("answer", question, entities, rules_context, graph_context))
         return "결과는 1입니다."
 
-    monkeypatch.setattr(nl_query, "execute_cypher", fake_execute_cypher)
+    monkeypatch.setattr(nl_query, "fetch_relevant_rules", fake_fetch_rules)
+    monkeypatch.setattr(nl_query, "fetch_subgraph_neo4j", fake_fetch_subgraph)
     monkeypatch.setattr(nl_query, "generate_answer", fake_generate_answer)
-    monkeypatch.setattr(nl_query, "_enrich_starting_step", lambda rows: rows)
 
     result = nl_query.run("일반사무직원의 초봉은?")
 
     assert result == "결과는 1입니다."
-    assert calls[0] == ("execute", "MATCH (n) RETURN 1 AS value")
-    assert calls[1] == ("answer", "일반사무직원의 초봉은?", [{"value": 1}])
+    assert calls[0][0] == "rules"
+    assert calls[1][0] == "graph"
+    assert calls[2][0] == "answer"
