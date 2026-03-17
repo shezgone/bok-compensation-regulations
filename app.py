@@ -604,6 +604,10 @@ ARCHITECTURES = {
     "Base LLM": {"fn": _run_base_llm, "icon": "🏛️", "color": "#9C27B0"},
 }
 
+
+def _clear_question_input() -> None:
+    st.session_state["question_input"] = ""
+
 # ---------------------------------------------------------------------------
 # 예시 질문
 # ---------------------------------------------------------------------------
@@ -683,10 +687,7 @@ col_run, col_clear = st.columns([1, 5])
 with col_run:
     run_clicked = st.button("🔍 실행", type="primary", use_container_width=True)
 with col_clear:
-    if st.button("🗑️ 초기화"):
-        st.session_state.pop("question_input", None)
-        st.session_state.pop("results", None)
-        st.rerun()
+    st.button("🗑️ 초기화", use_container_width=True, on_click=_clear_question_input)
 
 
 
