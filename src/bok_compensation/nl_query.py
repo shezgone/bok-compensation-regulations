@@ -272,10 +272,11 @@ def generate_answer(question: str, variables: List[Dict[str, Any]], rows: List[D
     explanation_note = f"\n조회 설명: {explanation}" if explanation else ""
     prompt = f"""다음 질문과 DB 조회 결과를 바탕으로 간결하게 답하세요.
 계산이 필요하면 DB에서 조회한 숫자만 사용하여 정확하게 계산하세요. 절대 임의로 숫자를 만들지 마세요.
+조회 결과가 여러 행이면 **모든 행을 빠짐없이** 나열하세요. 총 {len(rows)}건입니다.
 
 질문: {question}
 변수 정의: {json.dumps(variables, ensure_ascii=False)}
-조회 결과: {json.dumps(rows, ensure_ascii=False)}{explanation_note}
+조회 결과 ({len(rows)}건): {json.dumps(rows, ensure_ascii=False)}{explanation_note}
 """
     return _invoke_text(prompt)
 

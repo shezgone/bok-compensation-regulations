@@ -150,6 +150,7 @@ match
     (적용기준: $pp, 해당직급: $g, 해당직위: $pos) isa 직책급결정;
     $pp has 직책급액 $ppay;
     (적용기준: $diffstd, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+    $diffstd has 연봉차등액코드 $dc; $dc contains \"ADIFF\";
     $diffstd has 차등액 $diff;
     (적용기준: $capstd, 해당직급: $g) isa 연봉상한;
     $capstd has 연봉상한액 $cap;
@@ -172,6 +173,7 @@ match
     $g isa 직급, has 직급코드 $gc;
     $ev isa 평가결과, has 평가등급 $eg;
     (적용기준: $d, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+    $d has 연봉차등액코드 $dc; $dc contains "ADIFF";
     $d has 차등액 $diff;
     $diff >= {threshold};
 sort $diff desc;
@@ -198,8 +200,8 @@ match
     $g isa 직급, has 직급코드 "{grade_code}";
     $ev isa 평가결과, has 평가등급 "{eval_code}";
     (적용기준: $diffstd, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+    $diffstd has 연봉차등액코드 $dc; $dc contains "ADIFF";
     $diffstd has 차등액 $diff;
-limit 1;
 '''.strip(),
                 "variables": [{"name": "diff", "type": "double"}],
                 "explanation": f"{grade_code} {eval_code} 기준 연봉차등액을 조회합니다. 직전 본봉에 차등액(단위: 원)을 더하면 새 본봉입니다.",
