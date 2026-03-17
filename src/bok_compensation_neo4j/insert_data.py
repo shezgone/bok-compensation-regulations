@@ -142,6 +142,16 @@ BONUS_RATE_TABLE = [
     ("P10", "EX", 0.60), ("P10", "EE", 0.45), ("P10", "ME", 0.30), ("P10", "BE", 0.0),
 ]
 
+ADDENDUM_SALARY_DIFF = [
+    ("1급", "EX", 3672), ("1급", "EE", 2448), ("1급", "ME", 1224), ("1급", "BE", 0),
+    ("2급", "EX", 3348), ("2급", "EE", 2232), ("2급", "ME", 1116), ("2급", "BE", 0),
+    ("3급", "EX", 3024), ("3급", "EE", 2016), ("3급", "ME", 1008), ("3급", "BE", 0),
+]
+
+ADDENDUM_POSITION_PAY = []
+ADDENDUM_SALARY_CAP = []
+ADDENDUM_BONUS_RATE = []
+
 
 # ────────────────────────────────────────────────────────────
 # 삽입 함수들
@@ -413,7 +423,7 @@ def insert_bonus_standards(session):
             MATCH (pos:직위 {직위코드: $pos_code})
             MATCH (ev:평가결과 {평가등급: $eval_grade})
             CREATE (b:상여금기준 {상여금코드: $code, 상여유형: '평가', 상여금기준명: '평가상여금',
-                    상여금지급률: $rate, 설명: '별표1-2 평가상여금지급률표'})
+                    상여금지급률: $rate, 상여금적용시작일: date('2025-01-01'), 설명: '별표1-2 평가상여금지급률표'})
             CREATE (b)-[:해당직책구분]->(pos)
             CREATE (b)-[:해당등급]->(ev)
         """, pos_code=pos_code, eval_grade=eval_grade, code=code, rate=rate)
@@ -494,6 +504,162 @@ def insert_starting_step(session):
              desc_full=f"별표2 {desc}")
 
 
+def insert_addendums(session):
+    addendums = [
+        (1, 1, None, "(시행일) 이 규정은 2025년 1월 1일부터 시행한다.", 1),
+        (1, 2, None, "(보수에 관한 경과조치) 이 규정 시행 당시 종전의 규정에 따라 지급받고 있는 보수가 이 규정에 따른 보수보다 많은 경우에는 그 차액을 감하지 아니한다.", 2),
+        (1, 3, 1, "(연봉제본봉에 관한 경과조치) 2024년도 성과평가결과를 기준으로 2025년도 연봉제본봉을 산정하는 경우에는 제4조 제2항 및 별표7의 규정에도 불구하고 다음 각 호의 차등액을 적용한다.", 1),
+        (1, 3, 2, "(연봉제본봉 경과조치 적용기간) 제1항의 차등액은 2025년 1월 1일부터 2025년 12월 31일까지 적용한다.", 1),
+    ]
+    for buchik_no, jo, hang, content, priority in addendums:
+        session.run(
+            "\n".join([
+                "MATCH (reg:규정 {규정번호: 'BOK-COMP-2025'})",
+                "CREATE (b:부칙 {부칙번호: $buchik_no, 부칙조번호: $jo, 부칙항번호: $hang, 부칙내용: $content, 부칙시행일: date('2025-01-01'), 우선순위: $priority})",
+                "CREATE (reg)-[:규정구성]->(b)",
+            ]),
+            buchik_no=buchik_no,
+            jo=jo,
+            hang=hang,
+            content=content,
+            priority=priority,
+        )
+
+
+def insert_addendum_overrides(session):
+    session.run(
+        "\n".join([
+            "MATCH (buchik:부칙 {부칙조번호: 3, 부칙항번호: 1})",
+            "MATCH (article:조문 {조번호: 4, 항번호: 2})",
+            "CREATE (buchik)-[:규정_대체 {대체사유: '2025년 부칙 제3조제1항: 2024년도 성과평가 기준 연봉제본봉 산정 시 별표7 대신 부칙 차등액 적용', 대체시행일: date('2025-01-01'), 대체만료일: date('2025-12-31')}]->(article)",
+        ])
+    )
+    for grade_code, eval_grade, _ in SALARY_DIFF_TABLE:
+        diff_code = f"DIFF-{grade_code}-{eval_grade}"
+        session.run(
+            "\n".join([
+                "MATCH (buchik:부칙 {부칙조번호: 3, 부칙항번호: 1})",
+                "MATCH (diff:연봉차등액기준 {연봉차등액코드: $diff_code})",
+                "CREATE (buchik)-[:규정_대체 {대체사유: $reason, 대체시행일: date('2025-01-01'), 대체만료일: date('2025-12-31')}]->(diff)",
+            ]),
+            diff_code=diff_code,
+            reason=f"부칙 제3조: {grade_code} {eval_grade} 차등액을 부칙 경과조치로 적용",
+        )
+    session.run(
+        "\n".join([
+            "MATCH (buchik:부칙 {부칙조번호: 2})",
+            "MATCH (article:조문 {조번호: 4})",
+            "CREATE (buchik)-[:규정_대체 {대체사유: '부칙 제2조: 종전 보수가 신규정 보수보다 높으면 차액 미감', 대체시행일: date('2025-01-01')}]->(article)",
+        ])
+    )
+
+
+def insert_addendum_salary_diff(session):
+    for grade_code, eval_grade, diff_1000 in ADDENDUM_SALARY_DIFF:
+        code = f"ADIFF-{grade_code}-{eval_grade}"
+        diff = float(diff_1000 * 1000)
+        session.run(
+            "\n".join([
+                "MATCH (g:직급 {직급코드: $grade_code})",
+                "MATCH (ev:평가결과 {평가등급: $eval_grade})",
+                "CREATE (d:연봉차등액기준 {연봉차등액코드: $code, 차등액: $diff, 연봉차등적용시작일: date('2025-01-01'), 설명: '부칙 제3조 연봉제본봉 경과조치 차등액'})",
+                "CREATE (d)-[:해당직급]->(g)",
+                "CREATE (d)-[:해당등급]->(ev)",
+            ]),
+            grade_code=grade_code,
+            eval_grade=eval_grade,
+            code=code,
+            diff=diff,
+        )
+
+
+def insert_addendum_position_pay(session):
+    for row in ADDENDUM_POSITION_PAY:
+        session.run(
+            "\n".join([
+                "MATCH (pos:직위 {직위코드: $pos_code})",
+                "MATCH (g:직급 {직급코드: $grade_code})",
+                "CREATE (pp:직책급기준 {직책급코드: $code, 직책급액: $amount, 직책급적용시작일: date($start), 설명: $description})",
+                "CREATE (pp)-[:해당직급]->(g)",
+                "CREATE (pp)-[:해당직위]->(pos)",
+            ]),
+            pos_code=row["pos_code"],
+            grade_code=row["grade_code"],
+            code=f"APP-{row['pos_code']}-{row['grade_code']}",
+            amount=float(row["amount_1000"] * 1000),
+            start=row["start"],
+            description=row["description"],
+        )
+
+
+def insert_addendum_salary_cap(session):
+    for row in ADDENDUM_SALARY_CAP:
+        session.run(
+            "\n".join([
+                "MATCH (g:직급 {직급코드: $grade_code})",
+                "CREATE (c:연봉상한액기준 {연봉상한액코드: $code, 연봉상한액: $cap, 연봉상한적용시작일: date($start), 설명: $description})",
+                "CREATE (c)-[:해당직급]->(g)",
+            ]),
+            grade_code=row["grade_code"],
+            code=f"ACAP-{row['grade_code']}",
+            cap=float(row["cap_1000"] * 1000),
+            start=row["start"],
+            description=row["description"],
+        )
+
+
+def insert_addendum_bonus_rate(session):
+    for row in ADDENDUM_BONUS_RATE:
+        session.run(
+            "\n".join([
+                "MATCH (pos:직위 {직위코드: $pos_code})",
+                "MATCH (ev:평가결과 {평가등급: $eval_grade})",
+                "CREATE (b:상여금기준 {상여금코드: $code, 상여유형: '평가', 상여금기준명: '평가상여금', 상여금지급률: $rate, 상여금적용시작일: date($start), 설명: $description})",
+                "CREATE (b)-[:해당직책구분]->(pos)",
+                "CREATE (b)-[:해당등급]->(ev)",
+            ]),
+            pos_code=row["pos_code"],
+            eval_grade=row["eval_grade"],
+            code=f"ABONUS-{row['pos_code']}-{row['eval_grade']}",
+            rate=row["rate"],
+            start=row["start"],
+            description=row["description"],
+        )
+
+
+def insert_addendum_compensation_overrides(session):
+    for row in ADDENDUM_POSITION_PAY:
+        session.run(
+            "\n".join([
+                f"MATCH (buchik:부칙 {{부칙조번호: {row['buchik_jo']}}})",
+                f"MATCH (base:직책급기준 {{직책급코드: 'PP-{row['pos_code']}-{row['grade_code']}'}})",
+                "CREATE (buchik)-[:규정_대체 {대체사유: $reason, 대체시행일: date($start)}]->(base)",
+            ]),
+            reason=row["reason"],
+            start=row["start"],
+        )
+    for row in ADDENDUM_SALARY_CAP:
+        session.run(
+            "\n".join([
+                f"MATCH (buchik:부칙 {{부칙조번호: {row['buchik_jo']}}})",
+                f"MATCH (base:연봉상한액기준 {{연봉상한액코드: 'CAP-{row['grade_code']}'}})",
+                "CREATE (buchik)-[:규정_대체 {대체사유: $reason, 대체시행일: date($start)}]->(base)",
+            ]),
+            reason=row["reason"],
+            start=row["start"],
+        )
+    for row in ADDENDUM_BONUS_RATE:
+        session.run(
+            "\n".join([
+                f"MATCH (buchik:부칙 {{부칙조번호: {row['buchik_jo']}}})",
+                f"MATCH (base:상여금기준 {{상여금코드: 'BONUS-EVAL-{row['pos_code']}-{row['eval_grade']}'}})",
+                "CREATE (buchik)-[:규정_대체 {대체사유: $reason, 대체시행일: date($start)}]->(base)",
+            ]),
+            reason=row["reason"],
+            start=row["start"],
+        )
+
+
 # ────────────────────────────────────────────────────────────
 # 검증 & 메인
 # ────────────────────────────────────────────────────────────
@@ -517,7 +683,7 @@ def verify_data(session):
     # 관계 카운트
     rels = [
         "규정구성", "규정개정", "직렬분류", "호봉체계구성",
-        "해당직급", "해당직위", "해당직책구분", "해당등급", "대상직렬",
+        "해당직급", "해당직위", "해당직책구분", "해당등급", "대상직렬", "규정_대체",
     ]
     print()
     rtotal = 0
@@ -559,6 +725,13 @@ def main():
             ("임금피크제 (별표9)", insert_wage_peak),
             ("국외본봉 (별표1-5)", insert_overseas_salary),
             ("초임호봉 (별표2)", insert_starting_step),
+            ("부칙", insert_addendums),
+            ("규정_대체 관계", insert_addendum_overrides),
+            ("부칙 연봉차등액", insert_addendum_salary_diff),
+            ("부칙 직책급", insert_addendum_position_pay),
+            ("부칙 연봉상한액", insert_addendum_salary_cap),
+            ("부칙 상여금 지급률", insert_addendum_bonus_rate),
+            ("부칙 보수기준 대체 관계", insert_addendum_compensation_overrides),
         ]
 
         for i, (name, func) in enumerate(steps, 1):

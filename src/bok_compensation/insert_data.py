@@ -525,6 +525,7 @@ def insert_bonus_standards(driver, db):
                 $b isa 상여금기준, has 상여금코드 "{code}",
                     has 상여유형 "평가", has 상여금기준명 "평가상여금",
                     has 상여금지급률 {rate},
+                    has 상여금적용시작일 2025-01-01T00:00:00,
                     has 상여금기준설명 "별표1-2 평가상여금지급률표";
                 (적용기준: $b, 해당직책구분: $pos, 해당등급: $ev) isa 상여금결정;
         """)
@@ -628,6 +629,11 @@ ADDENDUM_SALARY_DIFF = [
     ("3급", "EX", 3024), ("3급", "EE", 2016), ("3급", "ME", 1008), ("3급", "BE", 0),
 ]
 
+# 검증된 과거 기준표가 확보되면 아래 scaffold에 row를 추가한다.
+ADDENDUM_POSITION_PAY = []
+ADDENDUM_SALARY_CAP = []
+ADDENDUM_BONUS_RATE = []
+
 
 def insert_addendums(driver, db):
     """부칙 (2025.2.13.) 제1조~제3조 삽입"""
@@ -729,6 +735,96 @@ def insert_addendum_salary_diff(driver, db):
         """)
 
 
+def insert_addendum_position_pay(driver, db):
+    """검증된 부칙 직책급 row가 있을 때 적재"""
+    for row in ADDENDUM_POSITION_PAY:
+        code = f"APP-{row['pos_code']}-{row['grade_code']}"
+        amount = float(row["amount_1000"] * 1000)
+        end_clause = f'has 직책급적용종료일 {row["end"]}T00:00:00,' if row.get("end") else ''
+        run_query(driver, db, f"""
+            match
+                $pos isa 직위, has 직위코드 "{row['pos_code']}";
+                $g isa 직급, has 직급코드 "{row['grade_code']}";
+            insert
+                $pp isa 직책급기준, has 직책급코드 "{code}",
+                    has 직책급액 {amount},
+                    has 직책급적용시작일 {row['start']}T00:00:00,
+                    {end_clause}
+                    has 직책급기준설명 "{row['description']}";
+                (적용기준: $pp, 해당직급: $g, 해당직위: $pos) isa 직책급결정;
+        """)
+
+
+def insert_addendum_salary_cap(driver, db):
+    """검증된 부칙 연봉상한 row가 있을 때 적재"""
+    for row in ADDENDUM_SALARY_CAP:
+        code = f"ACAP-{row['grade_code']}"
+        cap = float(row["cap_1000"] * 1000)
+        run_query(driver, db, f"""
+            match $g isa 직급, has 직급코드 "{row['grade_code']}";
+            insert
+                $c isa 연봉상한액기준, has 연봉상한액코드 "{code}",
+                    has 연봉상한액 {cap},
+                    has 연봉상한적용시작일 {row['start']}T00:00:00,
+                    has 연봉상한기준설명 "{row['description']}";
+                (적용기준: $c, 해당직급: $g) isa 연봉상한;
+        """)
+
+
+def insert_addendum_bonus_rate(driver, db):
+    """검증된 부칙 상여금 지급률 row가 있을 때 적재"""
+    for row in ADDENDUM_BONUS_RATE:
+        code = f"ABONUS-{row['pos_code']}-{row['eval_grade']}"
+        end_clause = f'has 상여금적용종료일 {row["end"]}T00:00:00,' if row.get("end") else ''
+        run_query(driver, db, f"""
+            match
+                $pos isa 직위, has 직위코드 "{row['pos_code']}";
+                $ev isa 평가결과, has 평가등급 "{row['eval_grade']}";
+            insert
+                $b isa 상여금기준, has 상여금코드 "{code}",
+                    has 상여유형 "평가", has 상여금기준명 "평가상여금",
+                    has 상여금지급률 {row['rate']},
+                    has 상여금적용시작일 {row['start']}T00:00:00,
+                    {end_clause}
+                    has 상여금기준설명 "{row['description']}";
+                (적용기준: $b, 해당직책구분: $pos, 해당등급: $ev) isa 상여금결정;
+        """)
+
+
+def insert_addendum_compensation_overrides(driver, db):
+    """직책급/상여금/연봉상한 부칙 대체 관계 scaffold"""
+    for row in ADDENDUM_POSITION_PAY:
+        end_clause = f', has 대체만료일 {row["end"]}T00:00:00' if row.get("end") else ''
+        run_query(driver, db, f"""
+            match
+                $buchik isa 부칙, has 부칙조번호 {row['buchik_jo']};
+                $base isa 직책급기준, has 직책급코드 "PP-{row['pos_code']}-{row['grade_code']}";
+            insert (대체규정: $buchik, 피대체대상: $base) isa 규정_대체,
+                has 대체사유 "{row['reason']}",
+                has 대체시행일 {row['start']}T00:00:00{end_clause};
+        """)
+    for row in ADDENDUM_SALARY_CAP:
+        end_clause = f', has 대체만료일 {row["end"]}T00:00:00' if row.get("end") else ''
+        run_query(driver, db, f"""
+            match
+                $buchik isa 부칙, has 부칙조번호 {row['buchik_jo']};
+                $base isa 연봉상한액기준, has 연봉상한액코드 "CAP-{row['grade_code']}";
+            insert (대체규정: $buchik, 피대체대상: $base) isa 규정_대체,
+                has 대체사유 "{row['reason']}",
+                has 대체시행일 {row['start']}T00:00:00{end_clause};
+        """)
+    for row in ADDENDUM_BONUS_RATE:
+        end_clause = f', has 대체만료일 {row["end"]}T00:00:00' if row.get("end") else ''
+        run_query(driver, db, f"""
+            match
+                $buchik isa 부칙, has 부칙조번호 {row['buchik_jo']};
+                $base isa 상여금기준, has 상여금코드 "BONUS-EVAL-{row['pos_code']}-{row['eval_grade']}";
+            insert (대체규정: $buchik, 피대체대상: $base) isa 규정_대체,
+                has 대체사유 "{row['reason']}",
+                has 대체시행일 {row['start']}T00:00:00{end_clause};
+        """)
+
+
 # ────────────────────────────────────────────────────────────
 # 검증 & 메인
 # ────────────────────────────────────────────────────────────
@@ -824,7 +920,11 @@ def main():
         ("초임호봉 (별표2)",             insert_starting_step),
         ("부칙 (2025.2.13)",            insert_addendums),
         ("부칙 연봉차등액 (부칙 제3조)", insert_addendum_salary_diff),
+        ("부칙 직책급",                  insert_addendum_position_pay),
+        ("부칙 연봉상한액",              insert_addendum_salary_cap),
+        ("부칙 상여금 지급률",           insert_addendum_bonus_rate),
         ("규정_대체 관계",               insert_addendum_overrides),
+        ("부칙 보수기준 대체 관계",      insert_addendum_compensation_overrides),
     ]
 
     for i, (name, func) in enumerate(steps, 1):

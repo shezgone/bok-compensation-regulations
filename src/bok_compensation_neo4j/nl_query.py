@@ -8,7 +8,10 @@ from typing import Any, Dict, List, Optional
 
 from .config import Neo4jConfig
 from .connection import get_driver
+from bok_compensation.deterministic_executor import try_execute, try_execute_regulation
 from bok_compensation.llm import create_chat_model
+from bok_compensation.override_resolver import render_article_override_lines, resolve_active_overrides, select_effective_row
+from bok_compensation.override_utils import is_effective_on, resolve_effective_date
 from bok_compensation.question_validation import extract_step_no, validate_question
 
 
@@ -34,6 +37,12 @@ def _invoke_json(prompt: str) -> Dict[str, Any]:
 def _regex_first(question: str, pattern: str) -> Optional[str]:
     match = re.search(pattern, question, flags=re.IGNORECASE)
     return match.group(1) if match else None
+
+
+def _sanitize_enum(value: Optional[str], allowed_values: List[str]) -> Optional[str]:
+    if value in allowed_values:
+        return value
+    return None
 
 
 def _parse_threshold(question: str) -> Optional[float]:
@@ -108,14 +117,14 @@ def extract_entities(question: str) -> Dict[str, Any]:
         entities = {}
 
     grade = entities.get("grade") or _regex_first(question, r"\b([1-6]급|G[1-5])\b")
-    eval_grade = entities.get("eval") or _regex_first(question, r"\b(EX|EE|ME|BE|NI)\b")
+    eval_grade = _sanitize_enum(entities.get("eval"), ["EX", "EE", "ME", "BE", "NI"]) or _regex_first(question, r"\b(EX|EE|ME|BE|NI)\b")
     article_no = entities.get("article_no")
     if article_no is None:
         article_match = _regex_first(question, r"제\s*(\d+)\s*조")
         article_no = int(article_match) if article_match else None
 
     topics = list(entities.get("topics") or [])
-    detected_position = entities.get("position")
+    detected_position = _sanitize_enum(entities.get("position"), ["총재", "위원", "부총재", "부총재보", "감사", "팀장", "부장", "반장", "부서장(가)", "부서장(나)"])
     if not detected_position:
         detected_position = next(
             (
@@ -147,13 +156,14 @@ def extract_entities(question: str) -> Dict[str, Any]:
         "grade": grade,
         "position": detected_position,
         "eval": eval_grade,
-        "country": entities.get("country") or next((name for name in ["미국", "독일", "일본", "영국", "홍콩", "중국"] if name in question), None),
-        "track": entities.get("track") or ("종합기획직원" if "종합기획" in question or "G" in question else None),
+        "country": _sanitize_enum(entities.get("country"), ["미국", "독일", "일본", "영국", "홍콩", "중국"]) or next((name for name in ["미국", "독일", "일본", "영국", "홍콩", "중국"] if name in question), None),
+        "track": _sanitize_enum(entities.get("track"), ["종합기획직원", "전문직원", "일반기능직원"]) or ("종합기획직원" if "종합기획" in question or "G" in question else None),
         "step_no": extract_step_no(question),
         "article_no": article_no,
         "topics": _dedupe(topics),
         "keyword": entities.get("keyword") or question,
         "amount_threshold": _normalize_threshold(entities.get("amount_threshold"), question),
+        "effective_date": resolve_effective_date(question).isoformat(),
     }
 
 
@@ -165,6 +175,307 @@ def _execute_cypher(cypher: str) -> List[Dict[str, Any]]:
             return [record.data() for record in session.run(cypher)]
     finally:
         driver.close()
+
+
+def _collapse_salary_diff_rows(rows: List[Dict[str, Any]], *, preferred_code_prefix: str) -> List[Dict[str, Any]]:
+    grouped: Dict[tuple, Dict[str, Any]] = {}
+    for row in rows:
+        grade = row.get("grade")
+        eval_grade = row.get("eval")
+        amount = row.get("amount")
+        if not grade or not eval_grade or amount is None:
+            continue
+
+        key = (grade, eval_grade)
+        code = str(row.get("code") or "")
+        candidate = {
+            "grade": grade,
+            "eval": eval_grade,
+            "amount": float(amount),
+            "code": code,
+            "preferred": code.startswith(preferred_code_prefix),
+        }
+        existing = grouped.get(key)
+        if existing is None:
+            grouped[key] = candidate
+            continue
+        if candidate["preferred"] and not existing["preferred"]:
+            grouped[key] = candidate
+            continue
+        if candidate["preferred"] == existing["preferred"] and candidate["amount"] > existing["amount"]:
+            grouped[key] = candidate
+
+    collapsed = list(grouped.values())
+    collapsed.sort(key=lambda row: row["amount"], reverse=True)
+    return [
+        {"grade": row["grade"], "eval": row["eval"], "amount": row["amount"]}
+        for row in collapsed
+    ]
+
+
+class _Neo4jDeterministicProvider:
+    def get_step_amount(self, grade: str, step_no: int) -> Optional[float]:
+        rows = _execute_cypher(
+            f"MATCH (g:직급 {{직급코드: '{grade}'}})-[:호봉체계구성]->(h:호봉 {{호봉번호: {int(step_no)}}}) RETURN h.호봉금액 AS amount LIMIT 1"
+        )
+        return float(rows[0]["amount"]) if rows and rows[0].get("amount") is not None else None
+
+    def get_starting_salary(self, track: Optional[str], grade_hint: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not track:
+            return None
+        where_clauses = [f"track.직렬명 = '{track}'"]
+        if grade_hint:
+            where_clauses.append(f"rule.설명 CONTAINS '{grade_hint}'")
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (rule:초임호봉기준)-[:대상직렬]->(track:직렬)",
+                f"WHERE {' AND '.join(where_clauses)}",
+                "RETURN rule.초임호봉번호 AS step_no, rule.설명 AS desc LIMIT 5",
+            ])
+        )
+        if not rows:
+            return None
+        if not grade_hint and len(rows) != 1:
+            return None
+        row = rows[0]
+        salary_grade = grade_hint
+        if salary_grade is None:
+            match = re.search(r"([1-6]급)", str(row.get("desc") or ""))
+            salary_grade = match.group(1) if match else None
+        if salary_grade is None:
+            return None
+        return {"step_no": int(row["step_no"]), "salary_grade": salary_grade, "desc": row.get("desc") or ""}
+
+    def _get_salary_diff_override_amount(self, grade: str, eval_grade: str, effective_date: Optional[str]) -> Optional[float]:
+        if not effective_date:
+            return None
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(d:연봉차등액기준)-[:해당직급]->(g:직급)",
+                "MATCH (d)-[:해당등급]->(e:평가결과)",
+                f"WHERE g.직급코드 = '{grade}' AND e.평가등급 = '{eval_grade}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end ORDER BY priority ASC, buchik_jo ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "reason"],
+        )
+        if not resolution.applied:
+            return None
+        override_rows = _execute_cypher(
+            "\n".join([
+                "MATCH (d:연봉차등액기준)-[:해당직급]->(:직급 {직급코드: '" + grade + "'})",
+                "MATCH (d)-[:해당등급]->(:평가결과 {평가등급: '" + eval_grade + "'})",
+                "WHERE d.연봉차등액코드 STARTS WITH 'ADIFF-'",
+                "RETURN d.차등액 AS amount, d.연봉차등액코드 AS code, d.연봉차등적용시작일 AS start",
+            ])
+        )
+        row = select_effective_row(override_rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["amount"]) if row and row.get("amount") is not None else None
+
+    def _get_salary_cap_override_amount(self, grade: str, effective_date: Optional[str]) -> Optional[float]:
+        if not effective_date:
+            return None
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(c:연봉상한액기준)-[:해당직급]->(g:직급)",
+                f"WHERE g.직급코드 = '{grade}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, c.연봉상한액코드 AS base_code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end ORDER BY priority ASC, buchik_jo ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "base_code", "reason"],
+        )
+        if not resolution.applied:
+            return None
+        override_rows = _execute_cypher(
+            "\n".join([
+                "MATCH (c:연봉상한액기준)-[:해당직급]->(:직급 {직급코드: '" + grade + "'})",
+                "WHERE c.연봉상한액코드 STARTS WITH 'ACAP-'",
+                "RETURN c.연봉상한액 AS amount, c.연봉상한액코드 AS code, c.연봉상한적용시작일 AS start",
+            ])
+        )
+        row = select_effective_row(override_rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["amount"]) if row and row.get("amount") is not None else None
+
+    def _get_position_pay_override_amount(self, grade: str, position: str, effective_date: Optional[str]) -> Optional[float]:
+        if not effective_date:
+            return None
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(p:직책급기준)-[:해당직급]->(g:직급)",
+                "MATCH (p)-[:해당직위]->(pos:직위)",
+                f"WHERE g.직급코드 = '{grade}' AND pos.직위명 = '{position}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, p.직책급코드 AS base_code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end ORDER BY priority ASC, buchik_jo ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "base_code", "reason"],
+        )
+        if not resolution.applied:
+            return None
+        override_rows = _execute_cypher(
+            "\n".join([
+                "MATCH (p:직책급기준)-[:해당직위]->(:직위 {직위명: '" + position + "'})",
+                "MATCH (p)-[:해당직급]->(:직급 {직급코드: '" + grade + "'})",
+                "WHERE p.직책급코드 STARTS WITH 'APP-'",
+                "RETURN p.직책급액 AS amount, p.직책급코드 AS code, p.직책급적용시작일 AS start",
+            ])
+        )
+        row = select_effective_row(override_rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["amount"]) if row and row.get("amount") is not None else None
+
+    def _get_bonus_rate_override_value(self, position: str, eval_grade: str, effective_date: Optional[str]) -> Optional[float]:
+        if not effective_date:
+            return None
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(bonus:상여금기준)-[:해당직책구분]->(pos:직위)",
+                "MATCH (bonus)-[:해당등급]->(e:평가결과)",
+                f"WHERE pos.직위명 = '{position}' AND e.평가등급 = '{eval_grade}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, bonus.상여금코드 AS base_code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end ORDER BY priority ASC, buchik_jo ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "base_code", "reason"],
+        )
+        if not resolution.applied:
+            return None
+        override_rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:상여금기준)-[:해당직책구분]->(:직위 {직위명: '" + position + "'})",
+                "MATCH (b)-[:해당등급]->(:평가결과 {평가등급: '" + eval_grade + "'})",
+                "WHERE b.상여금코드 STARTS WITH 'ABONUS-'",
+                "RETURN b.상여금지급률 AS rate, b.상여금코드 AS code, b.상여금적용시작일 AS start",
+            ])
+        )
+        row = select_effective_row(override_rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["rate"]) if row and row.get("rate") is not None else None
+
+    def get_salary_diff(self, grade: str, eval_grade: str, effective_date: Optional[str] = None) -> Optional[float]:
+        override_amount = self._get_salary_diff_override_amount(grade, eval_grade, effective_date)
+        if override_amount is not None:
+            return override_amount
+        rows = _execute_cypher(
+            f"MATCH (d:연봉차등액기준)-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) MATCH (d)-[:해당등급]->(:평가결과 {{평가등급: '{eval_grade}'}}) RETURN d.차등액 AS amount LIMIT 1"
+        )
+        return float(rows[0]["amount"]) if rows and rows[0].get("amount") is not None else None
+
+    def list_salary_diffs(self, minimum_amount: Optional[float] = None, effective_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        if effective_date:
+            override_rows = _execute_cypher(
+                "\n".join([
+                    "MATCH (b:부칙)-[r:규정_대체]->(d:연봉차등액기준)-[:해당직급]->(g:직급)",
+                    "MATCH (d)-[:해당등급]->(e:평가결과)",
+                    "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, g.직급코드 AS grade, e.평가등급 AS eval, d.연봉차등액코드 AS base_code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end",
+                ])
+            )
+            resolution = resolve_active_overrides(
+                override_rows,
+                effective_date=effective_date,
+                dedupe_keys=["buchik_jo", "grade", "eval", "base_code", "reason"],
+            )
+            if resolution.applied:
+                where_parts = ["d.연봉차등액코드 STARTS WITH 'ADIFF-'"]
+                if minimum_amount is not None:
+                    where_parts.append(f"d.차등액 >= {float(minimum_amount)}")
+                rows = _execute_cypher(
+                    "\n".join([
+                        "MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급)",
+                        "MATCH (d)-[:해당등급]->(e:평가결과)",
+                        f"WHERE {' AND '.join(where_parts)}",
+                        "RETURN g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS amount, d.연봉차등액코드 AS code ORDER BY amount DESC",
+                    ])
+                )
+                return _collapse_salary_diff_rows(rows, preferred_code_prefix="ADIFF-")
+        where_clause = f"WHERE d.차등액 >= {float(minimum_amount)}" if minimum_amount is not None else ""
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급)",
+                "MATCH (d)-[:해당등급]->(e:평가결과)",
+                where_clause,
+                "RETURN g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS amount, d.연봉차등액코드 AS code ORDER BY amount DESC",
+            ])
+        )
+        return _collapse_salary_diff_rows(rows, preferred_code_prefix="DIFF-")
+
+    def get_salary_cap(self, grade: str, effective_date: Optional[str] = None) -> Optional[float]:
+        override_amount = self._get_salary_cap_override_amount(grade, effective_date)
+        if override_amount is not None:
+            return override_amount
+        rows = _execute_cypher(
+            f"MATCH (c:연봉상한액기준)-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) RETURN c.연봉상한액 AS amount, c.연봉상한액코드 AS code, c.연봉상한적용시작일 AS start"
+        )
+        row = select_effective_row(rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["amount"]) if row and row.get("amount") is not None else None
+
+    def get_position_pay(self, grade: str, position: str, effective_date: Optional[str] = None) -> Optional[float]:
+        override_amount = self._get_position_pay_override_amount(grade, position, effective_date)
+        if override_amount is not None:
+            return override_amount
+        rows = _execute_cypher(
+            f"MATCH (p:직책급기준)-[:해당직위]->(:직위 {{직위명: '{position}'}}) MATCH (p)-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) RETURN p.직책급액 AS amount, p.직책급코드 AS code, p.직책급적용시작일 AS start"
+        )
+        row = select_effective_row(rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["amount"]) if row and row.get("amount") is not None else None
+
+    def get_bonus_rate(self, position: str, eval_grade: str, effective_date: Optional[str] = None) -> Optional[float]:
+        override_rate = self._get_bonus_rate_override_value(position, eval_grade, effective_date)
+        if override_rate is not None:
+            return override_rate
+        rows = _execute_cypher(
+            f"MATCH (b:상여금기준)-[:해당직책구분]->(:직위 {{직위명: '{position}'}}) MATCH (b)-[:해당등급]->(:평가결과 {{평가등급: '{eval_grade}'}}) RETURN b.상여금지급률 AS rate, b.상여금코드 AS code, b.상여금적용시작일 AS start"
+        )
+        row = select_effective_row(rows, effective_date=effective_date, dedupe_keys=["code", "start"])
+        return float(row["rate"]) if row and row.get("rate") is not None else None
+
+    def get_foreign_salary(self, country: str, grade: str) -> Optional[Dict[str, Any]]:
+        rows = _execute_cypher(
+            f"MATCH (o:국외본봉기준 {{국가명: '{country}'}})-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) RETURN o.국외기본급액 AS amount, o.통화단위 AS currency LIMIT 1"
+        )
+        if not rows or rows[0].get("amount") is None:
+            return None
+        return {"country": country, "grade": grade, "amount": float(rows[0]["amount"]), "currency": rows[0].get("currency") or ""}
+
+    def get_exec_base(self, position: str) -> Optional[float]:
+        aliases = {
+            "총재": ["총재 본봉"],
+            "위원": ["위원·부총재 본봉"],
+            "부총재": ["위원·부총재 본봉"],
+            "감사": ["감사 본봉"],
+            "부총재보": ["부총재보 본봉"],
+        }
+        quoted_names = ", ".join(f"'{name}'" for name in aliases.get(position, [f"{position} 본봉"]))
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:보수기준)",
+                f"WHERE b.보수기준명 IN [{quoted_names}]",
+                "RETURN b.보수기본급액 AS amount LIMIT 1",
+            ])
+        )
+        return float(rows[0]["amount"]) if rows and rows[0].get("amount") is not None else None
+
+    def get_wage_peak_rate(self, year: int) -> Optional[float]:
+        rows = _execute_cypher(
+            f"MATCH (w:임금피크제기준 {{적용연차: {int(year)}}}) RETURN w.임금피크지급률 AS rate LIMIT 1"
+        )
+        return float(rows[0]["rate"]) if rows and rows[0].get("rate") is not None else None
+
+    def get_wage_peak_rates(self) -> List[Dict[str, Any]]:
+        rows = _execute_cypher("MATCH (w:임금피크제기준) RETURN w.적용연차 AS year, w.임금피크지급률 AS rate ORDER BY year")
+        return [
+            {"year": int(row["year"]), "rate": float(row["rate"])}
+            for row in rows
+            if row.get("year") is not None and row.get("rate") is not None
+        ]
 
 
 def get_rules_subgraph() -> str:
@@ -202,7 +513,21 @@ def fetch_relevant_rules(question: str, entities: Dict[str, Any], limit: int = 8
     article_no = entities.get("article_no")
     if article_no is not None:
         matched = [line for line in all_rules if line.startswith(f"제{article_no}조:")]
-        return "\n".join(matched)
+        effective_date = entities.get("effective_date") or resolve_effective_date(question).isoformat()
+        rows = _execute_cypher(
+            "\n".join([
+                f"MATCH (b:부칙)-[r:규정_대체]->(a:조문 {{조번호: {article_no}}})",
+                "RETURN b.부칙조번호 AS buchik_jo, b.부칙내용 AS content, b.우선순위 AS priority, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end",
+                "ORDER BY priority ASC, buchik_jo ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "reason", "content"],
+        )
+        override_lines = render_article_override_lines(resolution.active_rows)
+        return "\n".join(matched + override_lines)
 
     exec_positions = {"총재", "위원", "부총재", "부총재보", "감사"}
     is_exec_salary_question = entities.get("position") in exec_positions and any(token in question for token in ("본봉", "보수"))
@@ -246,16 +571,22 @@ def _fetch_override_sections_neo4j(entities: Dict[str, Any]) -> List[str]:
     eval_grade = entities.get("eval")
     threshold = entities.get("amount_threshold")
     topics = set(entities.get("topics") or [])
+    effective_date = entities.get("effective_date")
 
     if article_no is not None:
         rows = _execute_cypher(
             "\n".join([
                 f"MATCH (b:부칙)-[r:규정_대체]->(a:조문 {{조번호: {article_no}}})",
-                "RETURN b.부칙조번호 AS buchik_jo, b.부칙내용 AS content, r.대체사유 AS reason, r.우선순위 AS priority",
+                "RETURN b.부칙조번호 AS buchik_jo, b.부칙내용 AS content, b.우선순위 AS priority, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end",
                 "ORDER BY priority ASC",
             ])
         )
-        sections.append(_format_section("조문 오버라이드 3-hop", rows))
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "reason", "content"],
+        )
+        sections.append(_format_section("조문 오버라이드 3-hop", resolution.active_rows))
 
     if "연봉차등" in topics or threshold is not None:
         filters: List[str] = []
@@ -271,11 +602,67 @@ def _fetch_override_sections_neo4j(entities: Dict[str, Any]) -> List[str]:
                 "MATCH (b:부칙)-[r:규정_대체]->(d:연봉차등액기준)-[:해당직급]->(g:직급)",
                 "MATCH (d)-[:해당등급]->(e:평가결과)",
                 where_clause,
-                "RETURN b.부칙조번호 AS buchik_jo, r.대체사유 AS reason, r.우선순위 AS priority, g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS diff, d.연봉차등액코드 AS code",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end, g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS diff, d.연봉차등액코드 AS code",
                 "ORDER BY diff DESC",
             ])
         )
-        sections.append(_format_section("부칙 차등액 오버라이드 3-hop", rows))
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "reason", "code"],
+        )
+        sections.append(_format_section("부칙 차등액 오버라이드 3-hop", resolution.active_rows))
+
+    if "연봉상한" in topics and grade:
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(c:연봉상한액기준)-[:해당직급]->(g:직급)",
+                f"WHERE g.직급코드 = '{grade}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, c.연봉상한액코드 AS code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end",
+                "ORDER BY priority ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "code", "reason"],
+        )
+        sections.append(_format_section("부칙 연봉상한 오버라이드 3-hop", resolution.active_rows))
+
+    position = entities.get("position")
+    if "직책급" in topics and grade and position:
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(p:직책급기준)-[:해당직급]->(g:직급)",
+                "MATCH (p)-[:해당직위]->(pos:직위)",
+                f"WHERE g.직급코드 = '{grade}' AND pos.직위명 = '{position}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, p.직책급코드 AS code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end",
+                "ORDER BY priority ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "code", "reason"],
+        )
+        sections.append(_format_section("부칙 직책급 오버라이드 3-hop", resolution.active_rows))
+
+    if "상여금" in topics and position and eval_grade:
+        rows = _execute_cypher(
+            "\n".join([
+                "MATCH (b:부칙)-[r:규정_대체]->(bonus:상여금기준)-[:해당직책구분]->(pos:직위)",
+                "MATCH (bonus)-[:해당등급]->(e:평가결과)",
+                f"WHERE pos.직위명 = '{position}' AND e.평가등급 = '{eval_grade}'",
+                "RETURN b.부칙조번호 AS buchik_jo, b.우선순위 AS priority, bonus.상여금코드 AS code, r.대체사유 AS reason, r.대체시행일 AS start, r.대체만료일 AS end",
+                "ORDER BY priority ASC",
+            ])
+        )
+        resolution = resolve_active_overrides(
+            rows,
+            effective_date=effective_date,
+            dedupe_keys=["buchik_jo", "code", "reason"],
+        )
+        sections.append(_format_section("부칙 상여금 오버라이드 3-hop", resolution.active_rows))
 
     return [section for section in sections if section]
 
@@ -290,8 +677,29 @@ def _format_section(title: str, rows: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def fetch_subgraph_neo4j(entities: Dict[str, Any], question: Optional[str] = None) -> str:
+def _make_plan_item(
+    name: str,
+    *,
+    executed: bool,
+    reason: str,
+    targets: Optional[Dict[str, Any]] = None,
+    row_count: Optional[int] = None,
+) -> Dict[str, Any]:
+    item: Dict[str, Any] = {
+        "name": name,
+        "executed": executed,
+        "reason": reason,
+    }
+    if targets:
+        item["targets"] = targets
+    if row_count is not None:
+        item["row_count"] = row_count
+    return item
+
+
+def fetch_subgraph_neo4j(entities: Dict[str, Any], question: Optional[str] = None) -> tuple[str, List[Dict[str, Any]]]:
     sections: List[str] = []
+    plan: List[Dict[str, Any]] = []
     hop_depth = int(entities.get("hop_depth") or _determine_hop_depth(question or "", entities))
     topics = set(entities.get("topics") or [])
     grade = entities.get("grade")
@@ -305,53 +713,114 @@ def fetch_subgraph_neo4j(entities: Dict[str, Any], question: Optional[str] = Non
             f"MATCH (g:직급 {{직급코드: '{grade}'}})-[:호봉체계구성]->(h:호봉) RETURN h.호봉번호 AS n, h.호봉금액 AS amt ORDER BY n"
         )
         sections.append(_format_section(f"호봉 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("호봉 조회", executed=True, reason="grade와 호봉 topic이 모두 존재합니다.", targets={"grade": grade}, row_count=len(rows)))
+    else:
+        missing: List[str] = []
+        if not grade:
+            missing.append("grade")
+        if "호봉" not in topics:
+            missing.append("topic=호봉")
+        plan.append(_make_plan_item("호봉 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if track and "초임호봉" in topics:
         rows = _execute_cypher(
             f"MATCH (s:초임호봉기준)-[:대상직렬]->(:직렬 {{직렬명: '{track}'}}) RETURN s.초임호봉번호 AS n, s.설명 AS desc"
         )
         sections.append(_format_section(f"초임호봉 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("초임호봉 조회", executed=True, reason="track과 초임호봉 topic이 모두 존재합니다.", targets={"track": track}, row_count=len(rows)))
+    else:
+        missing = []
+        if not track:
+            missing.append("track")
+        if "초임호봉" not in topics:
+            missing.append("topic=초임호봉")
+        plan.append(_make_plan_item("초임호봉 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if ("연봉차등" in topics or entities.get("amount_threshold") is not None) and grade and eval_grade:
         rows = _execute_cypher(
             f"MATCH (d:연봉차등액기준)-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) MATCH (d)-[:해당등급]->(:평가결과 {{평가등급: '{eval_grade}'}}) RETURN d.차등액 AS diff, d.연봉차등액코드 AS code"
         )
         sections.append(_format_section(f"연봉차등 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("연봉차등 조회", executed=True, reason="연봉차등 topic과 grade/eval이 모두 존재합니다.", targets={"grade": grade, "eval": eval_grade}, row_count=len(rows)))
     elif "연봉차등" in topics or entities.get("amount_threshold") is not None:
         rows = _execute_cypher(
             "MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급) MATCH (d)-[:해당등급]->(e:평가결과) RETURN g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS diff, d.연봉차등액코드 AS code ORDER BY diff DESC"
         )
         sections.append(_format_section(f"연봉차등 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("연봉차등 조회", executed=True, reason="연봉차등 topic은 있으나 grade/eval 일부가 없어 전체 후보를 조회합니다.", targets={"amount_threshold": entities.get("amount_threshold")}, row_count=len(rows)))
+    else:
+        plan.append(_make_plan_item("연봉차등 조회", executed=False, reason="topic=연봉차등 또는 amount_threshold가 없습니다."))
 
     if "연봉상한" in topics and grade:
         rows = _execute_cypher(
             f"MATCH (c:연봉상한액기준)-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) RETURN c.연봉상한액 AS cap_amt, c.연봉상한액코드 AS code"
         )
         sections.append(_format_section(f"연봉상한 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("연봉상한 조회", executed=True, reason="연봉상한 topic과 grade가 존재합니다.", targets={"grade": grade}, row_count=len(rows)))
+    else:
+        missing = []
+        if "연봉상한" not in topics:
+            missing.append("topic=연봉상한")
+        if not grade:
+            missing.append("grade")
+        plan.append(_make_plan_item("연봉상한 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if "직책급" in topics and grade and position:
         rows = _execute_cypher(
             f"MATCH (p:직책급기준)-[:해당직위]->(:직위 {{직위명: '{position}'}}) MATCH (p)-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) RETURN p.직책급액 AS amount, p.직책급코드 AS code"
         )
         sections.append(_format_section(f"직책급 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("직책급 조회", executed=True, reason="직책급 topic과 grade/position이 존재합니다.", targets={"grade": grade, "position": position}, row_count=len(rows)))
+    else:
+        missing = []
+        if "직책급" not in topics:
+            missing.append("topic=직책급")
+        if not grade:
+            missing.append("grade")
+        if not position:
+            missing.append("position")
+        plan.append(_make_plan_item("직책급 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if "상여금" in topics and position and eval_grade:
         rows = _execute_cypher(
             f"MATCH (b:상여금기준)-[:해당직책구분]->(:직위 {{직위명: '{position}'}}) MATCH (b)-[:해당등급]->(:평가결과 {{평가등급: '{eval_grade}'}}) RETURN b.상여금지급률 AS rate, b.상여금코드 AS code"
         )
         sections.append(_format_section(f"상여금 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("상여금 조회", executed=True, reason="상여금 topic과 position/eval이 존재합니다.", targets={"position": position, "eval": eval_grade}, row_count=len(rows)))
+    else:
+        missing = []
+        if "상여금" not in topics:
+            missing.append("topic=상여금")
+        if not position:
+            missing.append("position")
+        if not eval_grade:
+            missing.append("eval")
+        plan.append(_make_plan_item("상여금 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if "국외본봉" in topics and country and grade:
         rows = _execute_cypher(
             f"MATCH (o:국외본봉기준 {{국가명: '{country}'}})-[:해당직급]->(:직급 {{직급코드: '{grade}'}}) RETURN o.국외기본급액 AS amt, o.통화단위 AS cur"
         )
         sections.append(_format_section(f"국외본봉 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("국외본봉 조회", executed=True, reason="국외본봉 topic과 country/grade가 존재합니다.", targets={"country": country, "grade": grade}, row_count=len(rows)))
+    else:
+        missing = []
+        if "국외본봉" not in topics:
+            missing.append("topic=국외본봉")
+        if not country:
+            missing.append("country")
+        if not grade:
+            missing.append("grade")
+        plan.append(_make_plan_item("국외본봉 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if "임금피크제" in topics:
         rows = _execute_cypher(
             "MATCH (w:임금피크제기준) RETURN w.적용연차 AS year, w.임금피크지급률 AS rate, w.설명 AS desc ORDER BY year"
         )
         sections.append(_format_section(f"임금피크제 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("임금피크제 조회", executed=True, reason="임금피크제 topic이 존재합니다.", row_count=len(rows)))
+    else:
+        plan.append(_make_plan_item("임금피크제 조회", executed=False, reason="topic=임금피크제 가 없습니다."))
 
     if position and ("본봉" in topics or "보수" in topics or "본봉" in (question or "")):
         position_aliases = {
@@ -371,11 +840,23 @@ def fetch_subgraph_neo4j(entities: Dict[str, Any], question: Optional[str] = Non
             ])
         )
         sections.append(_format_section(f"집행간부 본봉 {hop_depth}-hop", rows))
+        plan.append(_make_plan_item("집행간부 본봉 조회", executed=True, reason="position과 본봉/보수 단서가 존재합니다.", targets={"position": position}, row_count=len(rows)))
+    else:
+        missing = []
+        if not position:
+            missing.append("position")
+        if not (("본봉" in topics) or ("보수" in topics) or ("본봉" in (question or ""))):
+            missing.append("topic=본봉|보수")
+        plan.append(_make_plan_item("집행간부 본봉 조회", executed=False, reason=f"필수 조건 부족: {', '.join(missing)}"))
 
     if hop_depth >= 3:
-        sections.extend(_fetch_override_sections_neo4j(entities))
+        override_sections = _fetch_override_sections_neo4j(entities)
+        sections.extend(override_sections)
+        plan.append(_make_plan_item("부칙 오버라이드 조회", executed=True, reason="hop_depth >= 3 이므로 부칙 오버라이드 조회를 수행합니다.", row_count=len([section for section in override_sections if section])))
+    else:
+        plan.append(_make_plan_item("부칙 오버라이드 조회", executed=False, reason=f"hop_depth={hop_depth} 이므로 3-hop 오버라이드 조회를 생략합니다."))
 
-    return "\n\n".join(section for section in sections if section)
+    return "\n\n".join(section for section in sections if section), plan
 
 
 def generate_answer(question: str, entities: Dict[str, Any], rules_context: str, graph_context: str) -> str:
@@ -410,6 +891,12 @@ def generate_answer(question: str, entities: Dict[str, Any], rules_context: str,
 def run_with_trace(question: str) -> Dict[str, Any]:
     entities = extract_entities(question)
     entities["hop_depth"] = _determine_hop_depth(question, entities)
+    rules_plan = {
+        "mode": "scored-rule-search",
+        "article_direct_lookup": entities.get("article_no") is not None,
+        "topics": entities.get("topics") or [],
+        "keyword": entities.get("keyword") or question,
+    }
     validation = validate_question(question, entities)
     if validation is not None:
         return {
@@ -419,20 +906,39 @@ def run_with_trace(question: str) -> Dict[str, Any]:
                 "query_language": "Cypher",
                 "entities": entities,
                 "validation": validation,
+                "retrieval_plan": {
+                    "rules": rules_plan,
+                    "graph": [],
+                },
                 "rules_context": "",
                 "graph_context": "",
             },
         }
 
     rules_context = fetch_relevant_rules(question, entities)
-    graph_context = fetch_subgraph_neo4j(entities, question)
-    answer = generate_answer(question, entities, rules_context, graph_context)
+    graph_context, graph_plan = fetch_subgraph_neo4j(entities, question)
+    deterministic_result = try_execute_regulation(question, entities)
+    if deterministic_result is None:
+        deterministic_result = try_execute(question, entities, _Neo4jDeterministicProvider())
+    if deterministic_result is not None:
+        answer = deterministic_result.answer
+    else:
+        answer = generate_answer(question, entities, rules_context, graph_context)
     return {
         "answer": answer,
         "trace": {
             "question": question,
             "query_language": "Cypher",
             "entities": entities,
+            "retrieval_plan": {
+                "rules": rules_plan,
+                "graph": graph_plan,
+            },
+            "deterministic_execution": None if deterministic_result is None else {
+                "kind": deterministic_result.kind,
+                "steps": deterministic_result.steps,
+                "values": deterministic_result.values,
+            },
             "rules_context": rules_context,
             "graph_context": graph_context,
         },

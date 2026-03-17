@@ -23,6 +23,8 @@ attribute 국외본봉적용시작일, value datetime;
 attribute 호봉적용종료일, value datetime;
 attribute 보수적용종료일, value datetime;
 attribute 직책급적용종료일, value datetime;
+attribute 상여금적용시작일, value datetime;
+attribute 상여금적용종료일, value datetime;
 attribute 수당지급률, value double;
 attribute 상여금지급률, value double;
 attribute 임금피크지급률, value double;
@@ -223,6 +225,8 @@ entity 상여금기준,
     owns 상여금기준명,
     owns 연간지급률,
     owns 상여금지급률,
+    owns 상여금적용시작일,
+    owns 상여금적용종료일,
     owns 상여금기준설명,
     plays 상여금결정:적용기준,
     plays 규정_대체:피대체대상;

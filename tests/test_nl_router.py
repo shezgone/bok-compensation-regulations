@@ -18,6 +18,8 @@ def test_run_uses_graph_first_semantic_context(monkeypatch):
     calls = []
 
     monkeypatch.setattr(nl_query, "extract_entities", lambda question: {"topics": ["조문"], "article_no": 14})
+    monkeypatch.setattr(nl_query, "try_execute_regulation", lambda question, entities: None)
+    monkeypatch.setattr(nl_query, "try_execute", lambda question, entities, provider: None)
 
     def fake_fetch_relevant_rules(question, entities):
         calls.append(("rules", question, entities))
@@ -25,7 +27,7 @@ def test_run_uses_graph_first_semantic_context(monkeypatch):
 
     def fake_fetch_subgraph(question_entities, question):
         calls.append(("graph", question_entities, question))
-        return ""
+        return "", []
 
     def fake_generate_answer(question, entities, rules_context, graph_context):
         calls.append(("answer", question, entities, rules_context, graph_context))
@@ -58,7 +60,7 @@ def test_run_uses_graph_first_data_context(monkeypatch):
 
     def fake_fetch_subgraph(entities, question):
         calls.append(("graph", entities, question))
-        return "[연봉차등 2-hop]\n- grade=1급, eval=EX, diff=3672000"
+        return "[연봉차등 2-hop]\n- grade=1급, eval=EX, diff=3672000", []
 
     def fake_generate_answer(question, entities, rules_context, graph_context):
         calls.append(("answer", question, entities, rules_context, graph_context))
@@ -74,3 +76,42 @@ def test_run_uses_graph_first_data_context(monkeypatch):
     assert calls[0][0] == "rules"
     assert calls[1][0] == "graph"
     assert calls[2][0] == "answer"
+
+
+def test_neo4j_salary_diff_listing_dedupes_base_and_addendum(monkeypatch):
+    calls = []
+
+    def fake_execute_cypher(query):
+        calls.append(query)
+        if "MATCH (b:부칙)-[r:규정_대체]->(d:연봉차등액기준)" in query:
+            return []
+        if "RETURN g.직급코드 AS grade, e.평가등급 AS eval, d.차등액 AS amount, d.연봉차등액코드 AS code" in query:
+            return [
+                {"grade": "1급", "eval": "EX", "amount": 3672000.0, "code": "ADIFF-1급-EX"},
+                {"grade": "1급", "eval": "EX", "amount": 3672000.0, "code": "DIFF-1급-EX"},
+                {"grade": "2급", "eval": "EE", "amount": 2232000.0, "code": "ADIFF-2급-EE"},
+                {"grade": "2급", "eval": "EE", "amount": 2232000.0, "code": "DIFF-2급-EE"},
+            ]
+        raise AssertionError(query)
+
+    monkeypatch.setattr(nl_query, "_execute_cypher", fake_execute_cypher)
+
+    rows = nl_query._Neo4jDeterministicProvider().list_salary_diffs(2000000.0, "2026-03-18")
+
+    assert rows == [
+        {"grade": "1급", "eval": "EX", "amount": 3672000.0},
+        {"grade": "2급", "eval": "EE", "amount": 2232000.0},
+    ]
+
+
+def test_run_rejects_step_salary_without_grade(monkeypatch):
+    monkeypatch.setattr(
+        nl_query,
+        "extract_entities",
+        lambda question: {"grade": None, "position": "팀장", "step_no": 50, "topics": ["호봉"]},
+    )
+
+    result = nl_query.run("50호봉 팀장의 연봉은?")
+
+    assert "직급 정보가 필요" in result
+    assert "팀장 정보만으로는 연봉을 계산할 수 없습니다" in result

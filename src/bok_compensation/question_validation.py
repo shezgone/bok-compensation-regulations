@@ -16,6 +16,7 @@ def validate_question(question: str, entities: Dict[str, Any]) -> Optional[Dict[
     issues: List[str] = []
     grade = entities.get("grade")
     step_no = entities.get("step_no")
+    position = entities.get("position")
 
     if step_no is None:
         step_no = extract_step_no(question)
@@ -26,6 +27,15 @@ def validate_question(question: str, entities: Dict[str, Any]) -> Optional[Dict[
         issues.append(
             f"{grade}은(는) 연봉제본봉 적용 대상이라 {step_no}호봉 본봉표로 직접 계산할 수 없습니다."
         )
+
+    if step_no is not None and grade is None:
+        issues.append(
+            f"{step_no}호봉만으로는 금액을 확정할 수 없고 직급 정보가 필요합니다."
+        )
+        if position is not None:
+            issues.append(
+                f"{position} 직책은 직급에 따라 직책급이 달라 {position} 정보만으로는 연봉을 계산할 수 없습니다."
+            )
 
     if not issues:
         return None
