@@ -68,6 +68,16 @@ def _run_base_llm(question: str) -> str:
 
 
 def _render_trace(trace: dict) -> None:
+    query_language = trace.get("query_language")
+    if query_language is not None:
+        st.markdown("**조회 언어**")
+        st.write(query_language)
+
+    validation = trace.get("validation")
+    if validation is not None:
+        st.markdown("**질문 검증**")
+        st.code(validation.get("message") or "", language="text")
+
     entities = trace.get("entities")
     if entities is not None:
         st.markdown("**추출 엔티티**")

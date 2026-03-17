@@ -1,6 +1,19 @@
 from bok_compensation_neo4j import nl_query
 
 
+def test_run_rejects_invalid_grade_step_combination(monkeypatch):
+    monkeypatch.setattr(
+        nl_query,
+        "extract_entities",
+        lambda question: {"grade": "1급", "step_no": 49, "topics": ["호봉"], "eval": "EX"},
+    )
+
+    result = nl_query.run("1급 49호봉 팀장의 연봉은? 평가는 EX")
+
+    assert "질문 조건이 현재 규정 체계와 맞지 않아" in result
+    assert "1급은(는) 연봉제본봉 적용 대상" in result
+
+
 def test_run_uses_graph_first_semantic_context(monkeypatch):
     calls = []
 

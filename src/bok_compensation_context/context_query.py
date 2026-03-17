@@ -8,6 +8,7 @@ import sys
 from typing import Dict, List, Tuple
 
 from bok_compensation.llm import create_chat_model
+from bok_compensation.question_validation import extract_step_no, validate_question
 
 
 CONTEXT_PATH = Path(__file__).with_name("regulation_context.md")
@@ -119,6 +120,10 @@ def build_context_prompt(question: str) -> Tuple[str, List[Dict[str, str]]]:
 
 
 def answer_with_context(question: str) -> Tuple[str, List[Dict[str, str]]]:
+    validation = validate_question(question, {"grade": next((grade for grade in ["1급", "2급", "3급", "4급", "5급", "6급", "G1", "G2", "G3", "G4", "G5"] if grade in question), None), "step_no": extract_step_no(question)})
+    if validation is not None:
+        return validation["message"], []
+
     prompt, sections = build_context_prompt(question)
     try:
         from langchain_core.messages import HumanMessage
@@ -131,11 +136,26 @@ def answer_with_context(question: str) -> Tuple[str, List[Dict[str, str]]]:
 
 
 def run_with_trace(question: str) -> Dict[str, object]:
+    validation = validate_question(question, {"grade": next((grade for grade in ["1급", "2급", "3급", "4급", "5급", "6급", "G1", "G2", "G3", "G4", "G5"] if grade in question), None), "step_no": extract_step_no(question)})
+    if validation is not None:
+        return {
+            "answer": validation["message"],
+            "trace": {
+                "question": question,
+                "query_language": "Context-only",
+                "validation": validation,
+                "selected_sections": [],
+                "section_count": 0,
+                "context_excerpt": "",
+            },
+        }
+
     answer, sections = answer_with_context(question)
     return {
         "answer": answer,
         "trace": {
             "question": question,
+            "query_language": "Context-only",
             "selected_sections": [section["title"] for section in sections],
             "section_count": len(sections),
             "context_excerpt": "\n\n".join(section["content"] for section in sections),

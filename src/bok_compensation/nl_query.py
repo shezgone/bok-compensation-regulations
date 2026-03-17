@@ -11,6 +11,7 @@ from typedb.driver import TransactionType
 from .config import TypeDBConfig
 from .connection import get_driver
 from .llm import create_chat_model
+from .question_validation import extract_step_no, validate_question
 
 
 SOURCE_TEXT_PATH = Path(__file__).resolve().parents[2] / "extracted_pdf.txt"
@@ -164,6 +165,7 @@ topics 예시:
         "eval": eval_grade,
         "country": entities.get("country") or next((name for name in ["미국", "독일", "일본", "영국", "홍콩", "중국"] if name in question), None),
         "track": entities.get("track") or ("종합기획직원" if "종합기획" in question or "G" in question else None),
+        "step_no": extract_step_no(question),
         "article_no": article_no,
         "topics": _dedupe(topics),
         "keyword": entities.get("keyword") or question,
@@ -566,6 +568,20 @@ def generate_answer(question: str, entities: Dict[str, Any], rules_context: str,
 def run_with_trace(question: str) -> Dict[str, Any]:
     entities = extract_entities(question)
     entities["hop_depth"] = _determine_hop_depth(question, entities)
+    validation = validate_question(question, entities)
+    if validation is not None:
+        return {
+            "answer": validation["message"],
+            "trace": {
+                "question": question,
+                "query_language": "TypeQL",
+                "entities": entities,
+                "validation": validation,
+                "rules_context": "",
+                "graph_context": "",
+            },
+        }
+
     rules_context = fetch_relevant_rules(question, entities)
     graph_context = fetch_subgraph_typedb(entities, question)
     answer = generate_answer(question, entities, rules_context, graph_context)
@@ -573,6 +589,7 @@ def run_with_trace(question: str) -> Dict[str, Any]:
         "answer": answer,
         "trace": {
             "question": question,
+            "query_language": "TypeQL",
             "entities": entities,
             "rules_context": rules_context,
             "graph_context": graph_context,
