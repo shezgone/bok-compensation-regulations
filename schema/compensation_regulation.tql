@@ -112,6 +112,18 @@ attribute 적용연차,       value integer;   # 별표9
 attribute 국가코드,       value string;
 attribute 국가명,         value string;
 
+# --- 부칙/규정대체 관련 속성 (NEW) ---
+attribute 부칙번호,       value integer;   # 몇 차 부칙인지 (예: 2025년 부칙 → 1)
+attribute 부칙조번호,     value integer;   # 부칙 내 조번호
+attribute 부칙항번호,     value integer;   # 부칙 내 항번호
+attribute 부칙내용,       value string;
+attribute 부칙시행일,     value datetime;
+attribute 부칙만료일,     value datetime;
+attribute 대체사유,       value string;
+attribute 대체시행일,     value datetime;
+attribute 대체만료일,     value datetime;
+attribute 우선순위,       value integer;   # 낮을수록 우선 (1=부칙, 2=본문)
+
 # ============================================================
 # 2. 엔티티 타입 (Entity Types)
 # ============================================================
@@ -132,7 +144,8 @@ entity 조문,
     owns 호번호,
     owns 조문내용,
     owns 비고,
-    plays 규정구성:하위조문;
+    plays 규정구성:하위조문,
+    plays 규정_대체:피대체대상;
 
 entity 개정이력,
     owns 개정일,
@@ -171,7 +184,8 @@ entity 호봉,
     owns 호봉금액,
     owns 호봉적용시작일,
     owns 호봉적용종료일,
-    plays 호봉체계구성:구성호봉;
+    plays 호봉체계구성:구성호봉,
+    plays 규정_대체:피대체대상;
 
 entity 보수기준,
     owns 보수코드 @key,
@@ -199,7 +213,8 @@ entity 직책급기준,
     owns 직책급적용시작일,
     owns 직책급적용종료일,
     owns 직책급기준설명,
-    plays 직책급결정:적용기준;
+    plays 직책급결정:적용기준,
+    plays 규정_대체:피대체대상;
 
 # --- 상여금 (NEW: 제12조, 별표1-2) ---
 entity 상여금기준,
@@ -209,7 +224,8 @@ entity 상여금기준,
     owns 연간지급률,
     owns 상여금지급률,
     owns 상여금기준설명,
-    plays 상여금결정:적용기준;
+    plays 상여금결정:적용기준,
+    plays 규정_대체:피대체대상;
 
 # --- 연봉제 (NEW: 별표7, 별표8) ---
 entity 연봉차등액기준,
@@ -217,21 +233,24 @@ entity 연봉차등액기준,
     owns 차등액,
     owns 연봉차등적용시작일,
     owns 연봉차등기준설명,
-    plays 연봉차등:적용기준;
+    plays 연봉차등:적용기준,
+    plays 규정_대체:피대체대상;
 
 entity 연봉상한액기준,
     owns 연봉상한액코드 @key,
     owns 연봉상한액,
     owns 연봉상한적용시작일,
     owns 연봉상한기준설명,
-    plays 연봉상한:적용기준;
+    plays 연봉상한:적용기준,
+    plays 규정_대체:피대체대상;
 
 # --- 임금피크제 (NEW: 별표9) ---
 entity 임금피크제기준,
     owns 임금피크제코드 @key,
     owns 적용연차,
     owns 임금피크지급률,
-    owns 임금피크제설명;
+    owns 임금피크제설명,
+    plays 규정_대체:피대체대상;
 
 # --- 해외 (NEW: 별표1-5) ---
 entity 국외본봉기준,
@@ -242,14 +261,16 @@ entity 국외본봉기준,
     owns 통화단위,
     owns 국외본봉적용시작일,
     owns 국외본봉기준설명,
-    plays 국외본봉결정:적용기준;
+    plays 국외본봉결정:적용기준,
+    plays 규정_대체:피대체대상;
 
 # --- 초임호봉 (NEW: 별표2) ---
 entity 초임호봉기준,
     owns 초임호봉코드 @key,
     owns 초임호봉번호,
     owns 초임호봉기준설명,
-    plays 초임호봉결정:적용기준;
+    plays 초임호봉결정:적용기준,
+    plays 규정_대체:피대체대상;
 
 # --- 평가 ---
 entity 평가결과,
@@ -314,5 +335,30 @@ relation 국외본봉결정,
 relation 초임호봉결정,
     relates 적용기준,
     relates 대상직렬;
+
+# ============================================================
+# 4. 부칙 및 규정 대체 (Addendum & Override)
+# ============================================================
+
+# --- 부칙 엔티티 ---
+entity 부칙,
+    owns 부칙번호,
+    owns 부칙조번호,
+    owns 부칙항번호,
+    owns 부칙내용,
+    owns 부칙시행일,
+    owns 부칙만료일,
+    owns 우선순위,
+    plays 규정_대체:대체규정,
+    plays 규정구성:하위조문;
+
+# --- 규정_대체 관계 (일반화된 오버라이드) ---
+# 부칙이 본문 조문, 별표 데이터 등 모든 유형의 규정 요소를 대체할 수 있음
+relation 규정_대체,
+    relates 대체규정,
+    relates 피대체대상,
+    owns 대체사유,
+    owns 대체시행일,
+    owns 대체만료일;
 
 # --- 평가 관계 ---

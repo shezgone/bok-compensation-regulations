@@ -44,7 +44,10 @@ def _invoke_json(prompt: str) -> Dict[str, Any]:
 
 
 def classify_intent(question: str) -> str:
-    semantic_markers = ("수 있어", "가능", "대상", "해석", "규정", "조문", "해당", "조건")
+    data_markers = ("산정", "계산", "본봉", "호봉", "차등액", "상한액", "직책급", "상여금", "얼마", "금액")
+    if any(marker in question for marker in data_markers):
+        return "Data"
+    semantic_markers = ("수 있어", "가능", "대상", "해석", "조문")
     if any(marker in question for marker in semantic_markers):
         return "Semantic"
     return "Data"
@@ -182,15 +185,17 @@ def _enrich_starting_step(
     return rows, variables
 
 
-def generate_answer(question: str, variables: List[Dict[str, Any]], rows: List[Dict[str, Any]]) -> str:
+def generate_answer(question: str, variables: List[Dict[str, Any]], rows: List[Dict[str, Any]], explanation: str = "") -> str:
     if not rows:
         return "조회 결과가 없습니다."
 
+    explanation_note = f"\n조회 설명: {explanation}" if explanation else ""
     prompt = f"""다음 질문과 DB 조회 결과를 바탕으로 간결하게 답하세요.
+계산이 필요하면 DB에서 조회한 숫자만 사용하여 정확하게 계산하세요. 절대 임의로 숫자를 만들지 마세요.
 
 질문: {question}
 변수 정의: {json.dumps(variables, ensure_ascii=False)}
-조회 결과: {json.dumps(rows, ensure_ascii=False)}
+조회 결과: {json.dumps(rows, ensure_ascii=False)}{explanation_note}
 """
     return _invoke_text(prompt)
 
@@ -204,9 +209,10 @@ def run(question: str) -> str:
     plan = nl_to_typeql(question)
     typeql = plan["typeql"]
     variables = plan.get("variables", [])
+    explanation = plan.get("explanation", "")
     rows = execute_typeql(typeql, variables)
     rows, variables = _enrich_starting_step(rows, variables)
-    return generate_answer(question, variables, rows)
+    return generate_answer(question, variables, rows, explanation)
 
 
 if __name__ == "__main__":

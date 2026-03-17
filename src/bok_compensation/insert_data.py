@@ -616,6 +616,119 @@ def insert_starting_step(driver, db):
         """)
 
 
+# ============================================================
+# 부칙 삽입 + 규정_대체 관계
+# ============================================================
+
+# 2025년 부칙 차등액 데이터 (부칙 제3조에 의한 경과조치)
+# 2024년도 성과평가결과 기준으로 2025년 연봉제본봉을 산정할 때 적용
+ADDENDUM_SALARY_DIFF = [
+    ("1급", "EX", 3672), ("1급", "EE", 2448), ("1급", "ME", 1224), ("1급", "BE", 0),
+    ("2급", "EX", 3348), ("2급", "EE", 2232), ("2급", "ME", 1116), ("2급", "BE", 0),
+    ("3급", "EX", 3024), ("3급", "EE", 2016), ("3급", "ME", 1008), ("3급", "BE", 0),
+]
+
+
+def insert_addendums(driver, db):
+    """부칙 (2025.2.13.) 제1조~제3조 삽입"""
+    addendums = [
+        (1, 1, None,
+         "(시행일) 이 규정은 2025년 1월 1일부터 시행한다.",
+         1),
+        (1, 2, None,
+         "(보수에 관한 경과조치) 이 규정 시행 당시 종전의 규정에 따라 지급받고 있는 "
+         "보수가 이 규정에 따른 보수보다 많은 경우에는 그 차액을 감하지 아니한다.",
+         2),
+        (1, 3, 1,
+         "(연봉제본봉에 관한 경과조치) 2024년도 성과평가결과를 기준으로 2025년도 "
+         "연봉제본봉을 산정하는 경우에는 제4조 제2항 및 별표7의 규정에도 불구하고 "
+         "다음 각 호의 차등액을 적용한다. "
+         "1. 1급: EX 3,672,000원, EE 2,448,000원, ME 1,224,000원, BE 0원 "
+         "2. 2급: EX 3,348,000원, EE 2,232,000원, ME 1,116,000원, BE 0원 "
+         "3. 3급: EX 3,024,000원, EE 2,016,000원, ME 1,008,000원, BE 0원",
+         1),
+        (1, 3, 2,
+         "(연봉제본봉 경과조치 적용기간) 제1항의 차등액은 2025년 1월 1일부터 "
+         "2025년 12월 31일까지 적용한다.",
+         1),
+    ]
+    for buchik_no, jo, hang, content, priority in addendums:
+        c = content.replace('"', '\\"')
+        hang_clause = f', has 부칙항번호 {hang}' if hang else ''
+        run_query(driver, db, f"""
+            insert $b isa 부칙,
+                has 부칙번호 {buchik_no},
+                has 부칙조번호 {jo}{hang_clause},
+                has 부칙내용 "{c}",
+                has 부칙시행일 2025-01-01T00:00:00,
+                has 우선순위 {priority};
+        """)
+
+    # 부칙도 규정에 속하도록 규정구성 관계 생성
+    run_query(driver, db, """
+        match
+            $reg isa 규정, has 규정번호 "BOK-COMP-2025";
+            $b isa 부칙;
+        insert (상위규정: $reg, 하위조문: $b) isa 규정구성;
+    """)
+
+
+def insert_addendum_overrides(driver, db):
+    """부칙 제3조 → 본문 제4조제2항 + 별표7 연봉차등액기준 오버라이드"""
+
+    # ── 1) 부칙 제3조제1항 → 본문 제4조제2항 (조문 대체) ──
+    run_query(driver, db, """
+        match
+            $buchik isa 부칙, has 부칙조번호 3, has 부칙항번호 1;
+            $article isa 조문, has 조번호 4, has 항번호 2;
+        insert (대체규정: $buchik, 피대체대상: $article) isa 규정_대체,
+            has 대체사유 "2025년 부칙 제3조제1항: 2024년도 성과평가 기준 연봉제본봉 산정 시 별표7 대신 부칙 차등액 적용",
+            has 대체시행일 2025-01-01T00:00:00,
+            has 대체만료일 2025-12-31T00:00:00;
+    """)
+
+    # ── 2) 부칙 제3조제1항 → 별표7 연봉차등액기준 각 항목 (별표 대체) ──
+    for grade_code, eval_grade, _ in SALARY_DIFF_TABLE:
+        diff_code = f"DIFF-{grade_code}-{eval_grade}"
+        run_query(driver, db, f"""
+            match
+                $buchik isa 부칙, has 부칙조번호 3, has 부칙항번호 1;
+                $diff isa 연봉차등액기준, has 연봉차등액코드 "{diff_code}";
+            insert (대체규정: $buchik, 피대체대상: $diff) isa 규정_대체,
+                has 대체사유 "부칙 제3조: {grade_code} {eval_grade} 차등액을 부칙 경과조치로 적용",
+                has 대체시행일 2025-01-01T00:00:00,
+                has 대체만료일 2025-12-31T00:00:00;
+        """)
+
+    # ── 3) 부칙 제2조 → 본문 전체 보수조항 (보수 경과조치) ──
+    run_query(driver, db, """
+        match
+            $buchik isa 부칙, has 부칙조번호 2;
+            $article isa 조문, has 조번호 4;
+        insert (대체규정: $buchik, 피대체대상: $article) isa 규정_대체,
+            has 대체사유 "부칙 제2조: 종전 보수가 신규정 보수보다 높으면 차액 미감",
+            has 대체시행일 2025-01-01T00:00:00;
+    """)
+
+
+def insert_addendum_salary_diff(driver, db):
+    """부칙 제3조에 의한 연봉차등액 (별표7 대체 데이터) + 연봉차등 관계"""
+    for grade_code, eval_grade, diff_1000 in ADDENDUM_SALARY_DIFF:
+        code = f"ADIFF-{grade_code}-{eval_grade}"
+        diff = float(diff_1000 * 1000)
+        run_query(driver, db, f"""
+            match
+                $g isa 직급, has 직급코드 "{grade_code}";
+                $ev isa 평가결과, has 평가등급 "{eval_grade}";
+            insert
+                $d isa 연봉차등액기준, has 연봉차등액코드 "{code}",
+                    has 차등액 {diff},
+                    has 연봉차등적용시작일 2025-01-01T00:00:00,
+                    has 연봉차등기준설명 "부칙 제3조 연봉제본봉 경과조치 차등액";
+                (적용기준: $d, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+        """)
+
+
 # ────────────────────────────────────────────────────────────
 # 검증 & 메인
 # ────────────────────────────────────────────────────────────
@@ -640,6 +753,7 @@ def verify_data(driver, db):
         ("국외본봉기준",  "match $x isa 국외본봉기준;"),
         ("초임호봉기준",  "match $x isa 초임호봉기준;"),
         ("평가결과",     "match $x isa 평가결과;"),
+        ("부칙",         "match $x isa 부칙;"),
         ("---------",   ""),
         ("규정구성",     "match $r isa 규정구성;"),
         ("규정개정",     "match $r isa 규정개정;"),
@@ -651,6 +765,7 @@ def verify_data(driver, db):
         ("연봉상한",     "match $r isa 연봉상한;"),
         ("국외본봉결정", "match $r isa 국외본봉결정;"),
         ("초임호봉결정", "match $r isa 초임호봉결정;"),
+        ("규정_대체",    "match $r isa 규정_대체;"),
     ]
     for label, q in checks:
         if not q:
@@ -707,6 +822,9 @@ def main():
         ("임금피크제 (별표9)",           insert_wage_peak),
         ("국외본봉 (별표1-5)",           insert_overseas_salary),
         ("초임호봉 (별표2)",             insert_starting_step),
+        ("부칙 (2025.2.13)",            insert_addendums),
+        ("부칙 연봉차등액 (부칙 제3조)", insert_addendum_salary_diff),
+        ("규정_대체 관계",               insert_addendum_overrides),
     ]
 
     for i, (name, func) in enumerate(steps, 1):
@@ -723,3 +841,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

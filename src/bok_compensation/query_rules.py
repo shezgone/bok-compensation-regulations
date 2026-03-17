@@ -162,6 +162,27 @@ match
             "explanation": "3급 팀장 EX 기준의 직책급, 연봉차등액, 연봉상한액을 조회합니다.",
         }
 
+    grade_code = _extract_grade_code(question)
+    if grade_code and any(term in question for term in ("본봉 산정", "본봉을 산정", "연봉 산정", "연봉제 본봉")):
+        eval_code = None
+        for code in ("EX", "EE", "ME", "BE"):
+            if code in question.upper():
+                eval_code = code
+                break
+        if eval_code:
+            return {
+                "typeql": f'''
+match
+    $g isa 직급, has 직급코드 "{grade_code}";
+    $ev isa 평가결과, has 평가등급 "{eval_code}";
+    (적용기준: $diffstd, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+    $diffstd has 차등액 $diff;
+limit 1;
+'''.strip(),
+                "variables": [{"name": "diff", "type": "double"}],
+                "explanation": f"{grade_code} {eval_code} 기준 연봉차등액을 조회합니다. 직전 본봉에 차등액(단위: 원)을 더하면 새 본봉입니다.",
+            }
+
     retrieval_plan = retrieval_guided_typedb_plan(question)
     if retrieval_plan is not None:
         return retrieval_plan
@@ -234,6 +255,24 @@ RETURN pp.직책급액 AS ppay, d.차등액 AS diff, cap.연봉상한액 AS cap
 """.strip(),
             "explanation": "3급 팀장 EX 기준의 직책급, 연봉차등액, 연봉상한액을 조회합니다.",
         }
+
+    grade_code = _extract_grade_code(question)
+    if grade_code and any(term in question for term in ("본봉 산정", "본봉을 산정", "연봉 산정", "연봉제 본봉")):
+        eval_code = None
+        for code in ("EX", "EE", "ME", "BE"):
+            if code in question.upper():
+                eval_code = code
+                break
+        if eval_code:
+            return {
+                "cypher": f'''
+MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급 {{직급코드: '{grade_code}'}})
+MATCH (d)-[:해당등급]->(:평가결과 {{평가등급: '{eval_code}'}})
+RETURN d.차등액 AS diff
+LIMIT 1
+'''.strip(),
+                "explanation": f"{grade_code} {eval_code} 기준 연봉차등액을 조회합니다. 직전 본봉에 차등액(단위: 원)을 더하면 새 본봉입니다.",
+            }
 
     retrieval_plan = retrieval_guided_neo4j_plan(question)
     if retrieval_plan is not None:
@@ -369,6 +408,20 @@ match
             "explanation": f"{grade_code} {position_name} {eval_grade} 조건의 보수 관련 기준을 조회합니다.",
         }
 
+    if intent == "salary_calculation" and grade_code and eval_grade:
+        return {
+            "typeql": f'''
+match
+    $g isa 직급, has 직급코드 "{grade_code}";
+    $ev isa 평가결과, has 평가등급 "{eval_grade}";
+    (적용기준: $diffstd, 해당직급: $g, 해당등급: $ev) isa 연봉차등;
+    $diffstd has 차등액 $diff;
+limit 1;
+'''.strip(),
+            "variables": [{"name": "diff", "type": "double"}],
+            "explanation": f"{grade_code} {eval_grade} 기준 연봉차등액을 조회합니다. 직전 본봉에 차등액(단위: 원)을 더하면 새 본봉입니다.",
+        }
+
     if intent == "position_pay_lookup" and key_binding_enabled and position_pay_metadata:
         return {
             "typeql": f'''
@@ -495,6 +548,17 @@ MATCH (cap:연봉상한액기준)-[:해당직급]->(g)
         return {
             "cypher": cypher,
             "explanation": f"{grade_code} {position_name} {eval_grade} 조건의 보수 관련 기준을 조회합니다.",
+        }
+
+    if intent == "salary_calculation" and grade_code and eval_grade:
+        return {
+            "cypher": f'''
+MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급 {{직급코드: '{grade_code}'}})
+MATCH (d)-[:해당등급]->(:평가결과 {{평가등급: '{eval_grade}'}})
+RETURN d.차등액 AS diff
+LIMIT 1
+'''.strip(),
+            "explanation": f"{grade_code} {eval_grade} 기준 연봉차등액을 조회합니다. 직전 본봉에 차등액(단위: 원)을 더하면 새 본봉입니다.",
         }
 
     if intent == "position_pay_lookup" and key_binding_enabled and position_pay_metadata:

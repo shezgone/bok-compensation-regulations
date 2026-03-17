@@ -81,6 +81,13 @@ INTENT_ENTRIES: Tuple[CatalogEntry, ...] = (
         description="직위와 평가등급 조합으로 평가상여금 지급률을 조회하는 질문",
         aliases=("상여금지급률", "평가상여금", "보너스 비율"),
     ),
+    CatalogEntry(
+        key="salary_calculation",
+        kind="intent",
+        label="연봉제 본봉 산정",
+        description="직전 본봉과 평가등급으로 연봉제 본봉(차등액)을 산정하는 질문",
+        aliases=("본봉 산정", "연봉 산정", "연봉제 본봉", "본봉 계산", "차등액 산정", "연봉차등", "본봉을 산정"),
+    ),
 )
 
 
@@ -247,6 +254,8 @@ def _detect_intent_with_bindings(
     grade_code: Optional[str],
     eval_grade: Optional[str],
 ) -> Optional[str]:
+    if grade_code and eval_grade and any(term in query for term in ("본봉 산정", "본봉을 산정", "연봉 산정", "연봉제 본봉", "차등액 산정")):
+        return "salary_calculation"
     if starting_rule_entry is not None and any(term in query for term in ("초봉", "초임호봉", "시작호봉")):
         return "starting_salary"
     if bonus_rule_entry is not None and any(term in query for term in ("상여금", "지급률", "평가상여금")):
