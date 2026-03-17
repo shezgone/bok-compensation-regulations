@@ -210,3 +210,12 @@ __marimo__/
 !docs/*.png
 __pycache__/
 .venv/
+
+# Local test/debug scripts (contain internal endpoints)
+test_db_read.py
+test_goethe.py
+test_goethe_compare.py
+test_override.py
+test_vllm.py
+vllm_proxy.py
+docs/flowise_vllm_proxy_tips.md

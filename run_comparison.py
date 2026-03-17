@@ -36,7 +36,7 @@ QUESTIONS = [
 
 def run_base_llm(question: str) -> str:
     os.environ["OPENAI_BASE_URL"] = "http://127.0.0.1:9999/v1"
-    os.environ["OPENAI_MODEL"] = "/data/models/naver-hyperclovax/HyperCLOVAX-SEED-Think-32B-text-only/llm/HyperCLOVAX-SEED-Think-32B"
+    os.environ["OPENAI_MODEL"] = os.getenv("BASE_LLM_MODEL", "your-model-name")
     model = create_chat_model(temperature=0.0)
     response = model.invoke([HumanMessage(content=question)])
     return response.content

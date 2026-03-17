@@ -6,8 +6,8 @@ from typing import Any
 
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b-instruct"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_OPENAI_MODEL = "HCX-GOV-THINK-V1-32B"
-DEFAULT_OPENAI_BASE_URL = "http://211.188.81.250:30402/v1"
+DEFAULT_OPENAI_MODEL = "your-model-name"
+DEFAULT_OPENAI_BASE_URL = "http://localhost:8000/v1"
 
 
 def get_llm_provider() -> str:

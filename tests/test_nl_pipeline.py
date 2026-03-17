@@ -599,8 +599,8 @@ def describe_llm_backend() -> str:
         model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:14b-instruct")
         base_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
     else:
-        model = os.getenv("OPENAI_MODEL", "HCX-GOV-THINK-V1-32B")
-        base_url = os.getenv("OPENAI_BASE_URL", "http://211.188.81.250:30402/v1")
+        model = os.getenv("OPENAI_MODEL", "your-model-name")
+        base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:8000/v1")
     return f"provider={provider}, model={model}, endpoint={base_url}"
 
 def run_neo4j_e2e_tests() -> List[TestResult]:

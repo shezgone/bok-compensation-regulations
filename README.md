@@ -424,8 +424,8 @@ PYTHONPATH=src python -m bok_compensation_neo4j.insert_data
 
 ```bash
 export LLM_PROVIDER=openai-compatible
-export OPENAI_BASE_URL=http://127.0.0.1:9999/v1
-export OPENAI_MODEL=HyperCLOVAX-SEED-Think-32B
+export OPENAI_BASE_URL=http://localhost:8000/v1
+export OPENAI_MODEL=your-model-name
 ```
 
 ### 4-Way 비교 실행
