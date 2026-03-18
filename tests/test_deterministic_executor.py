@@ -102,6 +102,10 @@ def test_executes_annual_salary_adjustment_with_spaced_phrase():
     assert result is not None
     assert result.kind == "annual_salary_adjustment"
     assert "63,024,000원" in result.answer
+    assert len(result.steps) >= 6
+    assert any("질문을 연봉제본봉 조정 계산형 질의로 분류" in step for step in result.steps)
+    assert any("연봉차등액 기준표" in step for step in result.steps)
+    assert any("최종 금액" in step for step in result.steps)
     assert ("salary_diff", "3급", "EX", "2025-05-01") in provider.calls
     assert ("salary_cap", "3급", "2025-05-01") in provider.calls
 
@@ -119,6 +123,11 @@ def test_executes_compensation_bundle_question():
     assert "85%" in result.answer
     assert "3,024,000원" in result.answer
     assert "77,724,000원" in result.answer
+    assert len(result.steps) >= 5
+    assert result.steps[0] == "질문을 복합 보수 조회형 질의로 분류했습니다."
+    assert any("직책급 조회" in step for step in result.steps)
+    assert any("상여금 지급률 조회" in step for step in result.steps)
+    assert any("한 문장으로 결합" in step for step in result.steps)
     assert ("position_pay", "3급", "팀장", "2025-06-01") in provider.calls
     assert ("bonus_rate", "팀장", "EX", "2025-06-01") in provider.calls
     assert ("salary_diff", "3급", "EX", "2025-06-01") in provider.calls
