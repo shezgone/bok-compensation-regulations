@@ -80,6 +80,91 @@ def _dedupe(items: List[str]) -> List[str]:
     return ordered
 
 
+def _contains_any_marker(question: str, markers: List[str]) -> bool:
+    compact_question = re.sub(r"\s+", "", question or "")
+    for marker in markers:
+        if marker in question or re.sub(r"\s+", "", marker) in compact_question:
+            return True
+    return False
+
+
+def _normalize_intent(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "definition": "regulation_definition",
+        "regulationdefinition": "regulation_definition",
+        "regulation_definition": "regulation_definition",
+        "regulationapplicability": "regulation_applicability",
+        "regulation_applicability": "regulation_applicability",
+        "applicability": "regulation_applicability",
+        "starting_salary": "starting_salary",
+        "step_salary": "step_salary",
+        "annual_salary_adjustment": "annual_salary_adjustment",
+        "salary_diff_listing": "salary_diff_listing",
+        "compensation_bundle": "compensation_bundle",
+        "position_pay": "position_pay",
+        "salary_diff": "salary_diff",
+        "salary_cap": "salary_cap",
+        "bonus_rate": "bonus_rate",
+        "foreign_salary": "foreign_salary",
+        "executive_base": "executive_base",
+        "wage_peak_rate": "wage_peak_rate",
+        "wage_peak_bundle": "wage_peak_bundle",
+    }
+    compact = normalized.replace("_", "")
+    return aliases.get(normalized) or aliases.get(compact)
+
+
+def _infer_intent(question: str, entities: Dict[str, Any], topics: List[str], article_no: Optional[int]) -> Optional[str]:
+    extracted_intent = _normalize_intent(entities.get("intent"))
+    if extracted_intent is not None:
+        return extracted_intent
+
+    topics_set = set(topics)
+    compensation_topics = {"직책급", "연봉차등", "연봉상한", "상여금"}
+    if (_contains_any_marker(question, ["보수규정", "보수 규정", "규정"]) or article_no is not None or "조문" in topics_set or "부칙" in topics_set):
+        if _contains_any_marker(question, ["적용", "대상", "가능", "지급", "해석"]):
+            return "regulation_applicability"
+        if _contains_any_marker(question, ["정의", "뜻", "의미", "무엇인가", "무슨 뜻", "무엇을 말", "누구를 말", "취지", "목적", "언제"]):
+            return "regulation_definition"
+
+    if _contains_any_marker(question, ["해외직원", "승급", "시간외근무수당", "시간당 보수", "평가상여금 지급시기"]) and _contains_any_marker(question, ["정의", "뜻", "의미", "무엇인가", "무슨 뜻", "무엇을 말", "누구를 말", "언제"]):
+        return "regulation_definition"
+    if _contains_any_marker(question, ["해외직원", "기한부 고용계약자"]) and _contains_any_marker(question, ["지급", "적용", "대상", "가능"]):
+        return "regulation_applicability"
+
+    if "임금피크제" in topics_set or _contains_any_marker(question, ["임금피크제", "기본급지급률"]):
+        if _contains_any_marker(question, ["연차별", "적용 대상"]):
+            return "wage_peak_bundle"
+        return "wage_peak_rate"
+
+    if _contains_any_marker(question, ["연봉제본봉", "연봉제 본봉"]):
+        return "annual_salary_adjustment"
+    if "초임호봉" in topics_set or _contains_any_marker(question, ["초봉", "초임호봉", "초임"]):
+        return "starting_salary"
+    if "국외본봉" in topics_set or _contains_any_marker(question, ["국외본봉", "주재", "해외 본봉"]):
+        return "foreign_salary"
+    if len(compensation_topics & topics_set) >= 2:
+        return "compensation_bundle"
+    if "직책급" in topics_set and "연봉차등" in topics_set and ("상여금" in topics_set or _contains_any_marker(question, ["패키지", "함께", "모두"])):
+        return "compensation_bundle"
+    if "직책급" in topics_set:
+        return "position_pay"
+    if "연봉차등" in topics_set and _contains_any_marker(question, ["모두", "나열", "목록", "열거", "조합"]):
+        return "salary_diff_listing"
+    if "연봉차등" in topics_set:
+        return "salary_diff"
+    if "연봉상한" in topics_set:
+        return "salary_cap"
+    if "상여금" in topics_set and _contains_any_marker(question, ["지급률", "비율", "몇 %", "몇%", "몇 퍼센트", "몇퍼센트"]):
+        return "bonus_rate"
+    if ("본봉" in topics_set or "호봉" in topics_set) and extract_step_no(question) is not None:
+        return "step_salary"
+    return None
+
+
 def _determine_hop_depth(question: str, entities: Dict[str, Any]) -> int:
     topics = set(entities.get("topics") or [])
     override_markers = ("부칙", "대체", "경과조치", "우선 적용", "우선적용", "개정")
@@ -105,6 +190,7 @@ def extract_entities(question: str) -> Dict[str, Any]:
   "track": "",
   "article_no": null,
   "topics": [],
+    "intent": "",
   "keyword": "",
   "amount_threshold": null
 }}
@@ -152,6 +238,9 @@ def extract_entities(question: str) -> Dict[str, Any]:
         if any(marker in question for marker in markers):
             topics.append(topic)
 
+    deduped_topics = _dedupe(topics)
+    intent = _infer_intent(question, entities, deduped_topics, article_no)
+
     return {
         "grade": grade,
         "position": detected_position,
@@ -160,7 +249,8 @@ def extract_entities(question: str) -> Dict[str, Any]:
         "track": _sanitize_enum(entities.get("track"), ["종합기획직원", "전문직원", "일반기능직원"]) or ("종합기획직원" if "종합기획" in question or "G" in question else None),
         "step_no": extract_step_no(question),
         "article_no": article_no,
-        "topics": _dedupe(topics),
+        "topics": deduped_topics,
+        "intent": intent,
         "keyword": entities.get("keyword") or question,
         "amount_threshold": _normalize_threshold(entities.get("amount_threshold"), question),
         "effective_date": resolve_effective_date(question).isoformat(),

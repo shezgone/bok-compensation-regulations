@@ -3,28 +3,47 @@ from pathlib import Path
 
 import pytest
 
-from bok_compensation.nl_query import execute_typeql, nl_to_typeql
-from bok_compensation_neo4j.nl_query import execute_cypher, nl_to_cypher
+from bok_compensation import nl_query as typedb_nl_query
+from bok_compensation_neo4j import nl_query as neo4j_nl_query
 
 
 CASES = [
-    ("일반사무직원의 초임호봉과 초봉은?", [1, 531000]),
-    ("청원경찰의 초임호봉과 초봉은?", [6, 740000]),
-    ("3급 부장 직책급은?", [2868000]),
-    ("부서장(가)가 EX 평가를 받으면 평가상여금 지급률은?", [1.0]),
-    ("종합기획직 G5의 초임호봉과 본봉 액수를 알려줘", [11, 1554000]),
-    ("3급 팀장이 EX 평가를 받으면 직책급, 연봉차등액, 연봉상한액은?", [1956000, 3024000, 77724000]),
-    ("3급 팀장 EX 기준 보수 패키지에서 직책급과 연봉차등액, 연봉상한액을 알려줘", [1956000, 3024000, 77724000]),
+    {
+        "question": "3급 부장 직책급은?",
+        "kind": "position_pay",
+        "expected_values": {"amount": 2868000.0},
+    },
+    {
+        "question": "2025년 기준 팀장의 EX 평가상여금 지급률은 몇 %인가?",
+        "kind": "bonus_rate",
+        "expected_values": {"rate": 0.85},
+    },
+    {
+        "question": "5급 11호봉 기본급은 얼마인가?",
+        "kind": "step_salary",
+        "expected_values": {"step_no": 11, "amount": 1554000.0},
+    },
+    {
+        "question": "2025년 기준 1급 연봉상한액은 얼마인가?",
+        "kind": "salary_cap",
+        "expected_values": {"cap": 85728000.0},
+    },
+    {
+        "question": "미국 2급 직원의 국외본봉은 얼마인가?",
+        "kind": "foreign_salary",
+        "expected_values": {"country": "미국", "grade": "2급", "amount": 9760.0, "currency": "USD"},
+    },
+    {
+        "question": "해외직원은 누구를 말하나?",
+        "kind": "regulation_definition",
+        "expected_values": {"article": "제2조", "topic": "해외직원 정의"},
+    },
+    {
+        "question": "3급 팀장이 EX 평가를 받으면 직책급, 연봉차등액, 연봉상한액은?",
+        "kind": "compensation_bundle",
+        "expected_values": {"position_pay": 1956000.0, "salary_diff": 3024000.0, "salary_cap": 77724000.0},
+    },
 ]
-
-
-def _flatten_numeric(rows):
-    values = []
-    for row in rows:
-        for value in row.values():
-            if isinstance(value, (int, float)):
-                values.append(value)
-    return values
 
 
 def _write_artifact(backend: str, question: str, payload: dict) -> str:
@@ -36,33 +55,80 @@ def _write_artifact(backend: str, question: str, payload: dict) -> str:
     return str(file_path)
 
 
-def _assert_expected(backend: str, question: str, plan: dict, rows: list, expected_values: list):
-    numeric_values = _flatten_numeric(rows)
-    missing = [expected for expected in expected_values if not any(abs(value - expected) < 1 for value in numeric_values)]
-    if missing:
+def _assert_expected(backend: str, question: str, result: dict, expected_kind: str, expected_values: dict):
+    deterministic = result["trace"].get("deterministic_execution")
+    if deterministic is None:
         artifact = _write_artifact(
             backend,
             question,
             {
                 "backend": backend,
                 "question": question,
-                "plan": plan,
-                "rows": rows,
-                "missing_values": missing,
+                "answer": result["answer"],
+                "trace": result["trace"],
+                "expected_kind": expected_kind,
+                "expected_values": expected_values,
             },
         )
-        pytest.fail(f"missing values {missing} for question '{question}' (artifact: {artifact})")
+        pytest.fail(f"deterministic execution missing for question '{question}' (artifact: {artifact})")
+
+    if deterministic["kind"] != expected_kind:
+        artifact = _write_artifact(
+            backend,
+            question,
+            {
+                "backend": backend,
+                "question": question,
+                "answer": result["answer"],
+                "trace": result["trace"],
+                "expected_kind": expected_kind,
+                "expected_values": expected_values,
+            },
+        )
+        pytest.fail(
+            f"expected kind {expected_kind} but got {deterministic['kind']} for question '{question}' (artifact: {artifact})"
+        )
+
+    actual_values = deterministic.get("values") or {}
+    mismatches = {}
+    for key, expected in expected_values.items():
+        actual = actual_values.get(key)
+        if isinstance(expected, float):
+            if actual is None or abs(float(actual) - expected) >= 1:
+                mismatches[key] = {"expected": expected, "actual": actual}
+        else:
+            if actual != expected:
+                mismatches[key] = {"expected": expected, "actual": actual}
+
+    if mismatches:
+        artifact = _write_artifact(
+            backend,
+            question,
+            {
+                "backend": backend,
+                "question": question,
+                "answer": result["answer"],
+                "trace": result["trace"],
+                "expected_kind": expected_kind,
+                "expected_values": expected_values,
+                "mismatches": mismatches,
+            },
+        )
+        pytest.fail(f"value mismatches for question '{question}': {mismatches} (artifact: {artifact})")
 
 
-@pytest.mark.parametrize("question,expected_values", CASES)
-def test_typedb_nl_regressions(question, expected_values):
-    plan = nl_to_typeql(question)
-    rows = execute_typeql(plan["typeql"], plan.get("variables", []))
-    _assert_expected("typedb", question, plan, rows, expected_values)
+@pytest.mark.parametrize(
+    "backend,module",
+    [
+        ("typedb", typedb_nl_query),
+        ("neo4j", neo4j_nl_query),
+    ],
+)
+@pytest.mark.parametrize("case", CASES)
+def test_nl_regressions(monkeypatch, backend, module, case):
+    monkeypatch.setattr(module, "_invoke_json", lambda prompt: {})
+    monkeypatch.setattr(module, "generate_answer", lambda question, entities, rules_context, graph_context: "FALLBACK")
 
+    result = module.run_with_trace(case["question"])
 
-@pytest.mark.parametrize("question,expected_values", CASES)
-def test_neo4j_nl_regressions(question, expected_values):
-    plan = nl_to_cypher(question)
-    rows = execute_cypher(plan["cypher"])
-    _assert_expected("neo4j", question, plan, rows, expected_values)
+    _assert_expected(backend, case["question"], result, case["kind"], case["expected_values"])

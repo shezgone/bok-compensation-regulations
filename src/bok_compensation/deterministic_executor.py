@@ -51,6 +51,12 @@ class DeterministicExecutionResult:
 
 
 EXEC_POSITIONS = {"총재", "위원", "부총재", "부총재보", "감사"}
+REGULATION_DEFINITION_INTENT = "regulation_definition"
+REGULATION_APPLICABILITY_INTENT = "regulation_applicability"
+
+
+def _compact_text(text: str) -> str:
+    return re.sub(r"\s+", "", text or "")
 
 
 def _extract_amount(question: str) -> Optional[float]:
@@ -100,16 +106,130 @@ def _format_row_count(count: int) -> str:
     return f"{count}건"
 
 
+def _contains_marker(question: str, marker: str) -> bool:
+    return marker in question or _compact_text(marker) in _compact_text(question)
+
+
 def _contains_any(question: str, markers: List[str]) -> bool:
-    return any(marker in question for marker in markers)
+    return any(_contains_marker(question, marker) for marker in markers)
 
 
 def _contains_all(question: str, markers: List[str]) -> bool:
-    return all(marker in question for marker in markers)
+    return all(_contains_marker(question, marker) for marker in markers)
+
+
+def _topic_set(entities: Dict[str, Any]) -> set[str]:
+    return {str(topic) for topic in (entities.get("topics") or []) if topic}
+
+
+def _has_topic(entities: Dict[str, Any], *topics: str) -> bool:
+    current_topics = _topic_set(entities)
+    return any(topic in current_topics for topic in topics)
+
+
+def _extract_article_numbers(question: str, entities: Dict[str, Any]) -> set[int]:
+    article_numbers = {int(value) for value in re.findall(r"제\s*(\d+)\s*조", question)}
+    article_no = entities.get("article_no")
+    if isinstance(article_no, int):
+        article_numbers.add(article_no)
+    return article_numbers
+
+
+def _is_definition_question(question: str) -> bool:
+    return _contains_any(question, ["정의", "뜻", "의미", "무엇인가", "무슨 뜻", "무엇을 말", "누구를 말"])
+
+
+def _intent(entities: Dict[str, Any]) -> Optional[str]:
+    value = entities.get("intent")
+    return str(value) if isinstance(value, str) and value else None
+
+
+def _intent_is(entities: Dict[str, Any], *intents: str) -> bool:
+    value = _intent(entities)
+    return value in intents
+
+
+def _intent_missing(entities: Dict[str, Any]) -> bool:
+    return _intent(entities) is None
+
+
+def _is_listing_question(question: str) -> bool:
+    return _contains_any(question, ["모두", "나열", "목록", "열거", "조합"])
+
+
+def _is_rate_question(question: str) -> bool:
+    return _contains_any(question, ["지급률", "비율", "몇 %", "몇%", "몇 퍼센트", "몇퍼센트"])
+
+
+def _is_timing_question(question: str) -> bool:
+    return _contains_any(question, ["언제", "지급시기", "지급 시기", "몇 월", "언제 지급"])
+
+
+def _mentions_overseas_staff(question: str) -> bool:
+    return _contains_any(question, ["해외직원", "국외사무소 직원", "국외사무소 근무"])
+
+
+def _mentions_overtime_pay(question: str) -> bool:
+    return _contains_any(question, ["시간외근무수당", "초과근무수당"])
+
+
+def _asks_for_starting_salary(question: str, entities: Dict[str, Any]) -> bool:
+    return _has_topic(entities, "초임호봉") or _contains_any(question, ["초봉", "초임호봉", "초임"])
+
+
+def _asks_for_step_salary(question: str, entities: Dict[str, Any]) -> bool:
+    return _has_topic(entities, "본봉", "호봉") or _contains_any(question, ["본봉", "기본급"])
+
+
+def _asks_for_salary_diff(question: str, entities: Dict[str, Any]) -> bool:
+    return _has_topic(entities, "연봉차등") or _contains_any(question, ["연봉차등액", "차등액", "연봉차등"])
+
+
+def _asks_for_salary_cap(question: str, entities: Dict[str, Any]) -> bool:
+    return _has_topic(entities, "연봉상한") or _contains_any(question, ["연봉상한액", "연봉상한", "상한액"])
+
+
+def _asks_for_position_pay(question: str, entities: Dict[str, Any]) -> bool:
+    return _has_topic(entities, "직책급") or _contains_any(question, ["직책급"])
+
+
+def _asks_for_bonus_rate(question: str, entities: Dict[str, Any]) -> bool:
+    return (_has_topic(entities, "상여금") and _is_rate_question(question)) or _contains_any(question, ["평가상여금 지급률", "상여금 지급률", "평가상여금 비율", "상여금 비율"])
+
+
+def _asks_for_foreign_salary(question: str, entities: Dict[str, Any]) -> bool:
+    return _has_topic(entities, "국외본봉") or _contains_any(question, ["국외본봉", "주재", "해외 본봉"])
+
+
+def _asks_for_annual_salary_adjustment(question: str, entities: Dict[str, Any]) -> bool:
+    return _intent_is(entities, "annual_salary_adjustment") or _contains_any(question, ["연봉제본봉", "연봉제 본봉"])
+
+
+def _asks_for_wage_peak(question: str, entities: Dict[str, Any]) -> bool:
+    return _intent_is(entities, "wage_peak_rate", "wage_peak_bundle") or _contains_any(question, ["임금피크제", "기본급지급률"])
+
+
+def _asks_for_executive_base(question: str, entities: Dict[str, Any]) -> bool:
+    return _intent_is(entities, "executive_base") or _contains_any(question, ["연간 본봉", "집행간부 본봉"])
 
 
 def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[DeterministicExecutionResult]:
-    if _contains_all(question, ["보수규정", "목적"]):
+    article_numbers = _extract_article_numbers(question, entities)
+
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and ((_contains_any(question, ["보수규정", "보수 규정"]) and _contains_any(question, ["목적", "취지"])) or 1 in article_numbers):
+        return DeterministicExecutionResult(
+            answer="한국은행법과 한국은행정관에 따라 위원, 집행간부, 감사 및 직원의 보수와 상여금에 관한 사항을 규정하는 것이다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '보수규정의 목적'으로 식별했습니다.",
+                "관련 근거 조문을 제1조 목적 조항으로 고정했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"article": "제1조", "topic": "목적"},
+        )
+
+    if _intent_missing(entities) and ((_contains_any(question, ["보수규정", "보수 규정"]) and _contains_any(question, ["목적", "취지"])) or (1 in article_numbers and _contains_any(question, ["목적", "취지"]))):
         return DeterministicExecutionResult(
             answer="한국은행법과 한국은행정관에 따라 위원, 집행간부, 감사 및 직원의 보수와 상여금에 관한 사항을 규정하는 것이다.",
             kind="regulation_definition",
@@ -122,7 +242,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"article": "제1조", "topic": "목적"},
         )
 
-    if _contains_all(question, ["해외직원", "정의"]):
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and _mentions_overseas_staff(question):
+        return DeterministicExecutionResult(
+            answer="국외사무소에 근무하는 본부 집행간부 및 직원을 말한다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '해외직원 정의'로 식별했습니다.",
+                "관련 근거 조문을 제2조 정의 조항으로 고정했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"article": "제2조", "topic": "해외직원 정의"},
+        )
+
+    if _intent_missing(entities) and _mentions_overseas_staff(question) and _is_definition_question(question):
         return DeterministicExecutionResult(
             answer="국외사무소에 근무하는 본부 집행간부 및 직원을 말한다.",
             kind="regulation_definition",
@@ -135,7 +268,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"article": "제2조", "topic": "해외직원 정의"},
         )
 
-    if "승급" in question and _contains_any(question, ["무엇", "뜻"]):
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and _contains_any(question, ["승급"]):
+        return DeterministicExecutionResult(
+            answer="현재의 호봉보다 높은 호봉을 부여하는 것을 말한다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '승급 정의'로 식별했습니다.",
+                "관련 근거 조문을 제2조 정의 조항으로 고정했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"article": "제2조", "topic": "승급 정의"},
+        )
+
+    if _intent_missing(entities) and _contains_any(question, ["승급"]) and _is_definition_question(question):
         return DeterministicExecutionResult(
             answer="현재의 호봉보다 높은 호봉을 부여하는 것을 말한다.",
             kind="regulation_definition",
@@ -148,7 +294,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"article": "제2조", "topic": "승급 정의"},
         )
 
-    if "보수 계산 기간" in question:
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and (_contains_any(question, ["보수 계산 기간", "보수의 계산 기간", "보수 계산 단위"]) or _contains_any(question, ["월급", "연봉", "일급"])):
+        return DeterministicExecutionResult(
+            answer="보수는 월급 또는 연봉으로 하되 필요한 경우 일급으로 할 수 있다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '보수 계산 기간'으로 식별했습니다.",
+                "관련 근거 조문을 제3조 보수 계산 단위 조항으로 고정했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"article": "제3조", "topic": "보수 계산 기간"},
+        )
+
+    if _intent_missing(entities) and (_contains_any(question, ["보수 계산 기간", "보수의 계산 기간", "보수 계산 단위"]) or (_contains_any(question, ["보수"]) and _contains_any(question, ["월급", "연봉", "일급"]))):
         return DeterministicExecutionResult(
             answer="보수는 월급 또는 연봉으로 하되 필요한 경우 일급으로 할 수 있다.",
             kind="regulation_definition",
@@ -161,7 +320,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"article": "제3조", "topic": "보수 계산 기간"},
         )
 
-    if "시간외근무수당" in question and "몇 배" in question:
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and _mentions_overtime_pay(question) and _contains_any(question, ["몇 배", "배율", "할증률"]):
+        return DeterministicExecutionResult(
+            answer="1.5배이다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '시간외근무수당 배율'로 식별했습니다.",
+                "규정상 고정값 1.5배를 적용했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"topic": "시간외근무수당 배율", "multiplier": 1.5},
+        )
+
+    if _intent_missing(entities) and _mentions_overtime_pay(question) and _contains_any(question, ["몇 배", "배율", "할증률"]):
         return DeterministicExecutionResult(
             answer="1.5배이다.",
             kind="regulation_definition",
@@ -174,7 +346,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"topic": "시간외근무수당 배율", "multiplier": 1.5},
         )
 
-    if "시간당 보수" in question and _contains_any(question, ["무엇을 기준", "기준으로 계산"]):
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and _contains_all(question, ["시간당", "보수"]):
+        return DeterministicExecutionResult(
+            answer="통상임금 월지급액의 209분의 1로 계산한다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '시간당 보수 계산 기준'으로 식별했습니다.",
+                "규정상 고정 산식인 통상임금 월지급액의 209분의 1을 적용했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"topic": "시간당 보수 기준", "divisor": 209},
+        )
+
+    if _intent_missing(entities) and _contains_all(question, ["시간당", "보수"]) and _contains_any(question, ["무엇을 기준", "기준으로 계산", "어떻게 계산", "산식"]):
         return DeterministicExecutionResult(
             answer="통상임금 월지급액의 209분의 1로 계산한다.",
             kind="regulation_definition",
@@ -187,7 +372,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"topic": "시간당 보수 기준", "divisor": 209},
         )
 
-    if "해외직원" in question and "시간외근무수당" in question:
+    if _intent_is(entities, REGULATION_APPLICABILITY_INTENT, REGULATION_DEFINITION_INTENT) and _mentions_overseas_staff(question) and _mentions_overtime_pay(question):
+        return DeterministicExecutionResult(
+            answer="지급하지 않는다. 해외직원의 본봉에는 시간외근무수당이 포함된 것으로 본다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 적용형으로 분류했습니다.",
+                "핵심 토픽을 '해외직원 시간외근무수당 특례'로 식별했습니다.",
+                "해외직원은 본봉에 시간외근무수당이 포함된다는 특례 규칙을 적용했습니다.",
+                "정형 규정 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"topic": "해외직원 시간외근무수당"},
+        )
+
+    if _intent_missing(entities) and _mentions_overseas_staff(question) and _mentions_overtime_pay(question) and _contains_any(question, ["지급", "포함", "별도"]):
         return DeterministicExecutionResult(
             answer="지급하지 않는다. 해외직원의 본봉에는 시간외근무수당이 포함된 것으로 본다.",
             kind="regulation_definition",
@@ -200,7 +398,20 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"topic": "해외직원 시간외근무수당"},
         )
 
-    if "평가상여금" in question and _contains_any(question, ["언제", "지급시기", "지급 시기"]):
+    if _intent_is(entities, REGULATION_DEFINITION_INTENT) and _contains_any(question, ["평가상여금", "상여금"]) and _contains_any(question, ["지급기준일", "지급시기", "언제", "몇 월"]):
+        return DeterministicExecutionResult(
+            answer="3월, 5월, 9월의 초일을 지급기준일로 지급된다.",
+            kind="regulation_definition",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 정의형으로 분류했습니다.",
+                "핵심 토픽을 '평가상여금 지급시기'로 식별했습니다.",
+                "규정상 고정 지급기준일인 3월·5월·9월 초일을 적용했습니다.",
+                "정형 정의 답변 템플릿으로 최종 문장을 구성했습니다.",
+            ],
+            values={"topic": "평가상여금 지급시기"},
+        )
+
+    if _intent_missing(entities) and _contains_any(question, ["평가상여금", "상여금"]) and _is_timing_question(question):
         return DeterministicExecutionResult(
             answer="3월, 5월, 9월의 초일을 지급기준일로 지급된다.",
             kind="regulation_definition",
@@ -213,11 +424,21 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
             values={"topic": "평가상여금 지급시기"},
         )
 
-    if (
-        "기한부 고용계약자" in question
-        and "상여금" in question
-        and (entities.get("article_no") in {4, 14} or _contains_all(question, ["제4조", "제14조"]))
-    ):
+    if _intent_is(entities, REGULATION_APPLICABILITY_INTENT) and _contains_any(question, ["기한부 고용계약자", "기한부"]) and _contains_any(question, ["상여금", "평가상여금"]):
+        return DeterministicExecutionResult(
+            answer="제4조는 보수 체계를 규정하지만 제14조가 우선 적용되어 기한부 고용계약자에게는 제3장 상여금 규정이 적용되지 않으므로 상여금이 지급되지 않는다.",
+            kind="regulation_applicability",
+            steps=[
+                "상위 단계에서 질문 의도를 규정 적용성 질의로 분류했습니다.",
+                "핵심 조건을 '기한부 고용계약자'와 '상여금 적용 여부'로 추출했습니다.",
+                "비교 대상 조문을 제4조와 제14조로 고정했습니다.",
+                "제14조의 적용 제외 조항이 제4조의 일반 보수 체계보다 우선한다고 판단했습니다.",
+                "적용 제외 결론을 반영해 최종 문장을 구성했습니다.",
+            ],
+            values={"articles": [4, 14], "topic": "기한부 고용계약자 상여금 적용성"},
+        )
+
+    if _intent_missing(entities) and _contains_any(question, ["기한부 고용계약자", "기한부"]) and _contains_any(question, ["상여금", "평가상여금"]) and (_contains_any(question, ["적용", "대상", "지급", "가능"]) or bool(article_numbers)):
         return DeterministicExecutionResult(
             answer="제4조는 보수 체계를 규정하지만 제14조가 우선 적용되어 기한부 고용계약자에게는 제3장 상여금 규정이 적용되지 않으므로 상여금이 지급되지 않는다.",
             kind="regulation_applicability",
@@ -235,6 +456,7 @@ def try_execute_regulation(question: str, entities: Dict[str, Any]) -> Optional[
 
 
 def try_execute(question: str, entities: Dict[str, Any], provider: DeterministicProvider) -> Optional[DeterministicExecutionResult]:
+    intent = _intent(entities)
     grade = entities.get("grade")
     step_grade = _normalize_step_grade(grade)
     position = entities.get("position")
@@ -247,7 +469,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
     year = _extract_year(question)
     minimum_amount = entities.get("amount_threshold")
 
-    if _contains_any(question, ["초봉", "초임호봉"]):
+    if intent == "starting_salary" or (intent is None and _asks_for_starting_salary(question, entities)):
         starting_salary = provider.get_starting_salary(track, step_grade)
         if starting_salary is not None:
             initial_step_no = starting_salary["step_no"]
@@ -276,7 +498,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                     },
                 )
 
-    if step_grade and step_no is not None and "본봉" in question:
+    if step_grade and step_no is not None and (intent == "step_salary" or (intent is None and _asks_for_step_salary(question, entities))):
         amount = provider.get_step_amount(step_grade, int(step_no))
         if amount is not None:
             return DeterministicExecutionResult(
@@ -291,7 +513,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values={"grade": step_grade, "step_no": int(step_no), "amount": amount},
             )
 
-    if _contains_any(question, ["연봉제본봉", "연봉제 본봉"]) and amount_in_question is not None and grade and eval_grade:
+    if (intent == "annual_salary_adjustment" or (intent is None and _asks_for_annual_salary_adjustment(question, entities))) and amount_in_question is not None and grade and eval_grade:
         diff = provider.get_salary_diff(grade, eval_grade, effective_date)
         cap = provider.get_salary_cap(grade, effective_date)
         if diff is not None:
@@ -334,7 +556,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 },
             )
 
-    if minimum_amount is not None and _contains_any(question, ["연봉차등", "차등액"]) and _contains_any(question, ["모두", "나열"]):
+    if minimum_amount is not None and (intent == "salary_diff_listing" or (intent is None and _asks_for_salary_diff(question, entities) and _is_listing_question(question))):
         rows = provider.list_salary_diffs(minimum_amount, effective_date)
         if rows:
             summary = ", ".join(f"{row['grade']} {row['eval']}" for row in rows)
@@ -352,16 +574,16 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
             )
 
     requested_parts: List[str] = []
-    if "직책급" in question:
+    if intent in {"compensation_bundle", "position_pay"} or (intent is None and _asks_for_position_pay(question, entities)):
         requested_parts.append("position_pay")
-    if _contains_any(question, ["연봉차등액", "차등액"]):
+    if intent in {"compensation_bundle", "salary_diff", "salary_diff_listing", "annual_salary_adjustment"} or (intent is None and _asks_for_salary_diff(question, entities)):
         requested_parts.append("salary_diff")
-    if _contains_any(question, ["연봉상한액", "연봉상한", "상한액"]):
+    if intent in {"compensation_bundle", "salary_cap", "annual_salary_adjustment"} or (intent is None and _asks_for_salary_cap(question, entities)):
         requested_parts.append("salary_cap")
-    if _contains_any(question, ["평가상여금 지급률", "상여금 지급률"]):
+    if intent in {"compensation_bundle", "bonus_rate"} or (intent is None and _asks_for_bonus_rate(question, entities)):
         requested_parts.append("bonus_rate")
 
-    if grade and position and eval_grade and len(requested_parts) >= 2:
+    if grade and position and eval_grade and (intent == "compensation_bundle" or len(requested_parts) >= 2):
         parts: List[str] = []
         steps: List[str] = []
         values: Dict[str, Any] = {}
@@ -402,7 +624,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values=values,
             )
 
-    if "직책급" in question and grade and position:
+    if (intent == "position_pay" or (intent is None and _asks_for_position_pay(question, entities))) and grade and position:
         amount = provider.get_position_pay(step_grade or grade, position, effective_date)
         if amount is not None:
             return DeterministicExecutionResult(
@@ -417,7 +639,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values={"amount": amount, "effective_date": effective_date},
             )
 
-    if _contains_any(question, ["연봉차등액", "차등액"]) and grade and eval_grade:
+    if (intent == "salary_diff" or (intent is None and _asks_for_salary_diff(question, entities))) and grade and eval_grade:
         diff = provider.get_salary_diff(grade, eval_grade, effective_date)
         if diff is not None:
             return DeterministicExecutionResult(
@@ -432,7 +654,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values={"diff": diff, "effective_date": effective_date},
             )
 
-    if _contains_any(question, ["연봉상한액", "연봉상한", "상한액"]) and grade:
+    if (intent == "salary_cap" or (intent is None and _asks_for_salary_cap(question, entities))) and grade:
         cap = provider.get_salary_cap(grade, effective_date)
         if cap is not None:
             return DeterministicExecutionResult(
@@ -447,7 +669,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values={"cap": cap, "effective_date": effective_date},
             )
 
-    if _contains_any(question, ["평가상여금 지급률", "상여금 지급률"]) and position and eval_grade:
+    if (intent == "bonus_rate" or (intent is None and _asks_for_bonus_rate(question, entities))) and position and eval_grade:
         rate = provider.get_bonus_rate(position, eval_grade, effective_date)
         if rate is not None:
             return DeterministicExecutionResult(
@@ -462,7 +684,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values={"position": position, "eval": eval_grade, "rate": rate, "effective_date": effective_date},
             )
 
-    if _contains_any(question, ["국외본봉", "주재"]) and country and grade:
+    if (intent == "foreign_salary" or (intent is None and _asks_for_foreign_salary(question, entities))) and country and grade:
         row = provider.get_foreign_salary(country, grade)
         if row is not None:
             return DeterministicExecutionResult(
@@ -477,7 +699,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values=row,
             )
 
-    if position in EXEC_POSITIONS and ("본봉" in question or "보수" in question):
+    if position in EXEC_POSITIONS and (intent == "executive_base" or (intent is None and (_asks_for_executive_base(question, entities) or "본봉" in question or "보수" in question))):
         amount = provider.get_exec_base(position)
         if amount is not None:
             return DeterministicExecutionResult(
@@ -492,7 +714,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                 values={"amount": amount},
             )
 
-    if "임금피크제" in question and "지급률" in question:
+    if ((intent in {"wage_peak_rate", "wage_peak_bundle"}) or (intent is None and _asks_for_wage_peak(question, entities) and "지급률" in question)):
         if year is not None:
             rate = provider.get_wage_peak_rate(year)
             if rate is not None:
@@ -507,7 +729,7 @@ def try_execute(question: str, entities: Dict[str, Any], provider: Deterministic
                     ],
                     values={"year": year, "rate": rate},
                 )
-        elif _contains_any(question, ["연차별", "적용 대상"]):
+        elif intent == "wage_peak_bundle" or _contains_any(question, ["연차별", "적용 대상"]):
             rows = provider.get_wage_peak_rates()
             if rows:
                 pieces = ", ".join(f"{row['year']}년차 {_format_decimal(row['rate'])}" for row in rows)

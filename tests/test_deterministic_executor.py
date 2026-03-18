@@ -75,6 +75,30 @@ def test_executes_starting_salary_question():
     assert "1,554,000원" in result.answer
 
 
+def test_executes_step_salary_with_basic_pay_phrase():
+    result = try_execute(
+        "5급 11호봉 기본급은 얼마인가?",
+        {"grade": "5급", "step_no": 11, "topics": ["본봉", "호봉"]},
+        FakeProvider(),
+    )
+
+    assert result is not None
+    assert result.kind == "step_salary"
+    assert "1,554,000원" in result.answer
+
+
+def test_executes_step_salary_from_intent_without_pay_keyword():
+    result = try_execute(
+        "5급 11호봉 얼마야?",
+        {"grade": "5급", "step_no": 11, "intent": "step_salary"},
+        FakeProvider(),
+    )
+
+    assert result is not None
+    assert result.kind == "step_salary"
+    assert "1,554,000원" in result.answer
+
+
 def test_executes_annual_salary_adjustment_with_cap():
     result = try_execute(
         "현재 연봉제본봉이 84,000,000원인 1급 EX 직원의 조정 후 연봉제본봉은 상한 적용 시 얼마인가?",
@@ -134,6 +158,26 @@ def test_executes_compensation_bundle_question():
     assert ("salary_cap", "3급", "2025-06-01") in provider.calls
 
 
+def test_explicit_intent_blocks_regulation_fallback_for_bundle_question():
+    question = "3급 팀장 EX 기준 보수 패키지에서 직책급과 연봉차등액, 연봉상한액을 알려줘"
+
+    regulation_result = try_execute_regulation(
+        question,
+        {"intent": "compensation_bundle", "grade": "3급", "position": "팀장", "eval": "EX"},
+    )
+
+    bundle_result = try_execute(
+        question,
+        {"intent": "compensation_bundle", "grade": "3급", "position": "팀장", "eval": "EX", "effective_date": "2025-06-01"},
+        FakeProvider(),
+    )
+
+    assert regulation_result is None
+    assert bundle_result is not None
+    assert bundle_result.kind == "compensation_bundle"
+    assert "직책급 1,956,000원" in bundle_result.answer
+
+
 def test_passes_effective_date_to_single_value_queries():
     provider = FakeProvider()
 
@@ -169,6 +213,37 @@ def test_executes_bonus_rate_single_query():
     assert ("bonus_rate", "팀장", "EX", "2025-06-01") in provider.calls
 
 
+def test_executes_bonus_rate_with_ratio_phrase():
+    provider = FakeProvider()
+
+    result = try_execute(
+        "2025년 기준 팀장 EX 평가상여금 비율은 얼마인가?",
+        {"position": "팀장", "eval": "EX", "effective_date": "2025-06-01", "topics": ["상여금"]},
+        provider,
+    )
+
+    assert result is not None
+    assert result.kind == "bonus_rate"
+    assert "85%" in result.answer
+    assert ("bonus_rate", "팀장", "EX", "2025-06-01") in provider.calls
+
+
+def test_executes_salary_diff_listing_with_list_phrase():
+    provider = FakeProvider()
+
+    result = try_execute(
+        "연봉차등액이 2,000,000원 이상인 조합 목록을 보여줘.",
+        {"amount_threshold": 2000000.0, "topics": ["연봉차등"], "effective_date": "2025-06-01"},
+        provider,
+    )
+
+    assert result is not None
+    assert result.kind == "salary_diff_listing"
+    assert "1급 EX" in result.answer
+    assert "1급 EE" in result.answer
+    assert ("list_salary_diffs", 2000000.0, "2025-06-01") in provider.calls
+
+
 def test_executes_regulation_definition_question():
     result = try_execute_regulation(
         "보수규정의 목적은 무엇인가?",
@@ -177,6 +252,35 @@ def test_executes_regulation_definition_question():
 
     assert result is not None
     assert "위원, 집행간부, 감사 및 직원의 보수와 상여금" in result.answer
+
+
+def test_executes_regulation_definition_with_variant_phrases():
+    purpose_result = try_execute_regulation(
+        "보수 규정의 취지는 무엇인가?",
+        {},
+    )
+    overseas_result = try_execute_regulation(
+        "해외직원은 누구를 말하나?",
+        {},
+    )
+
+    assert purpose_result is not None
+    assert purpose_result.kind == "regulation_definition"
+    assert "보수와 상여금에 관한 사항" in purpose_result.answer
+    assert overseas_result is not None
+    assert overseas_result.kind == "regulation_definition"
+    assert "국외사무소에 근무하는 본부 집행간부 및 직원" in overseas_result.answer
+
+
+def test_executes_regulation_definition_from_intent_without_definition_marker():
+    result = try_execute_regulation(
+        "해외직원이란?",
+        {"intent": "regulation_definition"},
+    )
+
+    assert result is not None
+    assert result.kind == "regulation_definition"
+    assert "국외사무소에 근무하는 본부 집행간부 및 직원" in result.answer
 
 
 def test_executes_overseas_overtime_rule_question():
@@ -198,4 +302,15 @@ def test_executes_article_applicability_question():
 
     assert result is not None
     assert "제14조가 우선 적용" in result.answer
+    assert "상여금이 지급되지 않는다" in result.answer
+
+
+def test_executes_article_applicability_without_explicit_article_numbers():
+    result = try_execute_regulation(
+        "기한부 고용계약자도 상여금 대상인가?",
+        {},
+    )
+
+    assert result is not None
+    assert result.kind == "regulation_applicability"
     assert "상여금이 지급되지 않는다" in result.answer

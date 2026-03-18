@@ -476,10 +476,11 @@ def _render_result_card_summary(trace: dict) -> None:
 def _render_flow_overview(trace: dict) -> None:
     backend = _backend_descriptor(trace)
     deterministic = trace.get("deterministic_execution")
+    intent = ((trace.get("entities") or {}).get("intent") or "없음")
     st.markdown("**실행 흐름 요약**")
     lines = [
         f"1. Streamlit 앱 app.py 가 `{backend['runner']}` 를 호출합니다.",
-        "2. `extract_entities(question)` 가 질문에서 직급, 직위, 평가등급, 토픽을 뽑습니다.",
+        f"2. `extract_entities(question)` 가 질문에서 직급, 직위, 평가등급, 토픽과 intent를 뽑습니다. 이번 intent는 `{intent}` 입니다.",
         "3. `validate_question(question, entities)` 가 질문이 너무 모호한지 먼저 검사합니다.",
         f"4. `{backend['rules_fetcher']}` 가 관련 조문 텍스트를 모읍니다.",
         f"5. `{backend['graph_fetcher']}` 가 그래프 조회 계획을 세우고 실제 쿼리를 실행합니다.",
@@ -583,6 +584,8 @@ def _render_trace(trace: dict) -> None:
 
     entities = trace.get("entities")
     if entities is not None:
+        st.markdown("**추출 의도**")
+        st.write(entities.get("intent") or "없음")
         st.markdown("**추출 엔티티**")
         st.code(json.dumps(entities, ensure_ascii=False, indent=2), language="json")
 
