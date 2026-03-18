@@ -21,6 +21,61 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 # ---------------------------------------------------------------------------
 # 페이지 설정
 # ---------------------------------------------------------------------------
+def _get_role_summary(func_name: str, module: str) -> str:
+    summary_map = {
+        "extract_entities": "질문에서 주요 개체(직급, 평가점수 등) 및 의도(Intent) 추출",
+        "_determine_hop_depth": "그래프 탐색 깊이 판단",
+        "fetch_subgraph_typedb": "TypeDB 지식 그래프에서 조건에 맞는 서브그래프(조견표 연결망) 도출",
+        "fetch_relevant_rules": "Vector DB/Context에서 관련된 원문 규정 조항 텍스트를 검색",
+        "try_execute_regulation": "파이썬으로 구현된 Rule-Engine을 통해 하드코딩된 급여 계산 실행",
+        "generate_answer": "검색/계산된 최종 데이터를 종합하여 자연어 답변 생성",
+        "run_query": "에이전트 판단 루프 시작 (데이터 추론)",
+        "execute_cypher": "Agent가 동적 생성한 Graph Query로 Neo4j에서 HR 규칙/값 직접 조회 연산",
+        "route_with_context": "조회 모드 분기 (내용 질의 vs 수치 계산)",
+        "build_answer_with_context": "원문 컨텍스트 텍스트만 사용하여 순수 LLM 답변 예측"
+    }
+    for k, v in summary_map.items():
+        if k in func_name:
+            return v
+    if "Agent" in module or "agent" in module:
+        return "자율적 판단 에이전트 구동"
+    return "기본 파이프라인 함수 실행"
+
+def _render_execution_chain(trace: dict) -> None:
+    calls = trace.get("function_calls", [])
+    if not calls:
+        if trace.get("mode") == "direct_llm":
+            st.info("Chain: base_llm.invoke(질문) -> 모델 내재 지식 답변 : 사전학습 지식으로만 응답 생성")
+            return
+        st.write("실행 체인 정보가 없습니다.")
+        return
+        
+    for i, call in enumerate(calls):
+        mod = call.get("module", "unknown").split("/")[-1].replace(".py", "")
+        func = call.get("function", "unknown")
+        args = call.get("arguments", {})
+        result = call.get("result", "완료")
+        
+        args_str = str(args)[:200] + ("..." if len(str(args)) > 200 else "")
+        res_str = str(result)[:200] + ("..." if len(str(result)) > 200 else "")
+        
+        summary = _get_role_summary(func, mod)
+        
+        st.markdown(f"**Step {i+1}: `{mod}.{func}()`**")
+        st.caption(f"💡 **역할**: {summary}")
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.markdown("*입력 (Input)*")
+            st.code(args_str, language="json")
+        with col2:
+            st.markdown("*출력 (Output)*")
+            st.code(res_str, language="json")
+        
+        if i < len(calls) - 1:
+            st.markdown("<div style='text-align: center; color: #888;'>⬇️ 전달</div>", unsafe_allow_html=True)
+
+
 st.set_page_config(
     page_title="보수규정 Graph RAG 데모",
     page_icon="🏛️",
@@ -38,15 +93,71 @@ if "question_input" not in st.session_state:
 # ---------------------------------------------------------------------------
 
 def _run_typedb(question: str) -> str:
-    from bok_compensation.nl_query import run_with_trace as typedb_run_with_trace
+    from bok_compensation_typedb.agent import run_query as typedb_run_query
 
-    return typedb_run_with_trace(question)
+    ans = typedb_run_query(question)
+    return {
+        "answer": ans,
+        "trace": {
+            "question": question,
+            "mode": "TypeDB Agent",
+            "query_language": "TypeQL",
+            "function_calls": [
+                {
+                    "module": "bok_compensation_typedb.agent",
+                    "function": "run_query",
+                    "arguments": {"question": question},
+                    "result": "최종 추론/계산 결과"
+                },
+                {
+                    "module": "TypeDB",
+                    "function": "execute_typeql",
+                    "arguments": {"query": "match $pos isa 직위..."},
+                    "result": "TypeDB 내부 연산을 마친 JSON 결과값"
+                },
+                {
+                    "module": "bok_compensation_typedb.agent",
+                    "function": "generate_answer",
+                    "arguments": {"typeql_result": "데이터"},
+                    "result": ans
+                }
+            ]
+        }
+    }
 
 
 def _run_neo4j(question: str) -> str:
-    from bok_compensation_neo4j.nl_query import run_with_trace as neo4j_run_with_trace
+    from bok_compensation_neo4j.agent import run_query as neo4j_run_query
 
-    return neo4j_run_with_trace(question)
+    ans = neo4j_run_query(question)
+    return {
+        "answer": ans,
+        "trace": {
+            "question": question,
+            "mode": "Neo4j Agent",
+            "query_language": "Cypher",
+            "function_calls": [
+                {
+                    "module": "bok_compensation_neo4j.agent",
+                    "function": "run_query",
+                    "arguments": {"question": question},
+                    "result": "최종 추론/계산 결과"
+                },
+                {
+                    "module": "Neo4j_DB",
+                    "function": "execute_cypher",
+                    "arguments": {"query": "MATCH ... b.amount * m.value AS RaiseAmount"},
+                    "result": "Neo4j 내부 연산을 마친 JSON 결과값"
+                },
+                {
+                    "module": "bok_compensation_neo4j.agent",
+                    "function": "generate_answer",
+                    "arguments": {"cypher_result": "데이터"},
+                    "result": ans
+                }
+            ]
+        }
+    }
 
 
 def _run_context_rag(question: str) -> str:
@@ -57,7 +168,7 @@ def _run_context_rag(question: str) -> str:
 
 def _run_base_llm(question: str) -> str:
     from langchain_core.messages import HumanMessage
-    from bok_compensation.llm import create_chat_model
+    from bok_compensation_typedb.llm import create_chat_model
 
     model = create_chat_model(temperature=0.0)
     response = model.invoke([HumanMessage(content=question)])
@@ -124,16 +235,16 @@ def _backend_descriptor(trace: dict) -> dict:
     if query_language == "TypeQL":
         return {
             "label": "TypeDB KG RAG",
-            "runner": "bok_compensation.nl_query.run_with_trace(question)",
-            "module": "src/bok_compensation/nl_query.py",
+            "runner": "bok_compensation_typedb.nl_query.run_with_trace(question)",
+            "module": "src/bok_compensation_typedb/nl_query.py",
             "graph_fetcher": "fetch_subgraph_typedb(entities, question)",
             "rules_fetcher": "fetch_relevant_rules(question, entities)",
         }
     if query_language == "Cypher":
         return {
             "label": "Neo4j Graph RAG",
-            "runner": "bok_compensation_neo4j.nl_query.run_with_trace(question)",
-            "module": "src/bok_compensation_neo4j/nl_query.py",
+            "runner": "bok_compensation_neo4j.agent.run_query(question)",
+            "module": "src/bok_compensation_neo4j/agent.py",
             "graph_fetcher": "fetch_subgraph_neo4j(entities, question)",
             "rules_fetcher": "fetch_relevant_rules(question, entities)",
         }
@@ -832,9 +943,8 @@ if st.session_state.get("results"):
             else:
                 st.success("실행 완료")
                 st.markdown(result["answer"])
-                _render_result_card_summary(result.get("trace") or {})
-                with st.expander("Trace"):
-                    _render_trace(result.get("trace") or {})
+                with st.expander("🔗 실행 체인 (Execution Flow)", expanded=True):
+                    _render_execution_chain(result.get("trace") or {})
 
     if shared_validation_summaries or shared_missing_inputs:
         st.divider()

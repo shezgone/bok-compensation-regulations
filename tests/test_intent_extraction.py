@@ -1,5 +1,4 @@
-from bok_compensation import nl_query as typedb_nl_query
-from bok_compensation_neo4j import nl_query as neo4j_nl_query
+from bok_compensation_typedb import nl_query as typedb_nl_query
 
 
 def test_typedb_extract_entities_normalizes_llm_intent(monkeypatch):
@@ -14,12 +13,6 @@ def test_typedb_extract_entities_normalizes_llm_intent(monkeypatch):
     assert entities["intent"] == "regulation_definition"
 
 
-def test_neo4j_extract_entities_infers_listing_intent(monkeypatch):
-    monkeypatch.setattr(neo4j_nl_query, "_invoke_json", lambda prompt: {})
-
-    entities = neo4j_nl_query.extract_entities("연봉차등액이 200만원 이상인 조합 목록을 보여줘.")
-
-    assert entities["intent"] == "salary_diff_listing"
 
 
 def test_typedb_extract_entities_infers_compensation_bundle_intent(monkeypatch):

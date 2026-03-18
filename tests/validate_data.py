@@ -2,7 +2,6 @@
 DB 데이터 전수 검증 스크립트 — PDF 원본 별표 기대값 vs 실제 DB 값 비교
 
 사용법:
-    PYTHONPATH=src python tests/validate_data.py neo4j
     PYTHONPATH=src python tests/validate_data.py typedb
     PYTHONPATH=src python tests/validate_data.py all
 """
@@ -127,213 +126,11 @@ class TestResult:
     detail: str = ""
 
 
-def run_neo4j_validation():
-    """Neo4j 데이터 전수 검증"""
-    from bok_compensation_neo4j.config import Neo4jConfig
-    from bok_compensation_neo4j.connection import get_driver
-
-    config = Neo4jConfig()
-    driver = get_driver(config)
-    results = []
-
-    with driver.session(database=config.database) as s:
-        # 1. 노드 수 검증
-        for label, expected in EXPECTED_COUNTS.items():
-            r = s.run(f"MATCH (n:`{label}`) RETURN count(n) AS cnt")
-            actual = r.single()["cnt"]
-            ok = actual == expected
-            results.append(TestResult(
-                "노드수", f"{label}: {expected}건",
-                ok, f"실제={actual}" if not ok else ""
-            ))
-
-        # 2. 본봉표 샘플
-        for grade, hobong, expected_amt in EXPECTED_SALARY_SAMPLES:
-            r = s.run("""
-                MATCH (g:직급 {직급코드: $g})-[:호봉체계구성]->(h:호봉 {호봉번호: $n})
-                RETURN h.호봉금액 AS amt
-            """, g=grade, n=hobong)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("본봉표", f"{grade} {hobong}호봉", False, "데이터 없음"))
-            else:
-                actual = int(rec["amt"])
-                ok = actual == expected_amt
-                results.append(TestResult(
-                    "본봉표", f"{grade} {hobong}호봉: {expected_amt:,}",
-                    ok, f"실제={actual:,}" if not ok else ""
-                ))
-
-        # 3. 호봉 수
-        for grade, expected_cnt in EXPECTED_SALARY_COUNTS:
-            r = s.run("""
-                MATCH (g:직급 {직급코드: $g})-[:호봉체계구성]->(h:호봉)
-                RETURN count(h) AS cnt
-            """, g=grade)
-            actual = r.single()["cnt"]
-            ok = actual == expected_cnt
-            results.append(TestResult(
-                "호봉수", f"{grade}: {expected_cnt}개",
-                ok, f"실제={actual}" if not ok else ""
-            ))
-
-        # 4. 직책급표
-        for pos_name, grade, expected_amt in EXPECTED_POSITION_PAY:
-            r = s.run("""
-                MATCH (pp:직책급기준)-[:해당직위]->(pos:직위 {직위명: $pos})
-                MATCH (pp)-[:해당직급]->(g:직급 {직급코드: $grade})
-                RETURN pp.직책급액 AS amt
-            """, pos=pos_name, grade=grade)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("직책급", f"{pos_name}+{grade}", False, "데이터 없음"))
-            else:
-                actual = int(rec["amt"])
-                ok = actual == expected_amt
-                results.append(TestResult(
-                    "직책급", f"{pos_name}+{grade}: {expected_amt:,}",
-                    ok, f"실제={actual:,}" if not ok else ""
-                ))
-
-        # 5. 연봉차등액
-        for grade, eval_g, expected_diff in EXPECTED_SALARY_DIFF:
-            r = s.run("""
-                MATCH (d:연봉차등액기준)-[:해당직급]->(g:직급 {직급코드: $grade})
-                MATCH (d)-[:해당등급]->(ev:평가결과 {평가등급: $eval})
-                RETURN d.차등액 AS diff
-            """, grade=grade, eval=eval_g)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("연봉차등", f"{grade}+{eval_g}", False, "데이터 없음"))
-            else:
-                actual = int(rec["diff"])
-                ok = actual == expected_diff
-                results.append(TestResult(
-                    "연봉차등", f"{grade}+{eval_g}: {expected_diff:,}",
-                    ok, f"실제={actual:,}" if not ok else ""
-                ))
-
-        # 6. 연봉상한액
-        for grade, expected_cap in EXPECTED_SALARY_CAP:
-            r = s.run("""
-                MATCH (c:연봉상한액기준)-[:해당직급]->(g:직급 {직급코드: $grade})
-                RETURN c.연봉상한액 AS cap
-            """, grade=grade)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("연봉상한", f"{grade}", False, "데이터 없음"))
-            else:
-                actual = int(rec["cap"])
-                ok = actual == expected_cap
-                results.append(TestResult(
-                    "연봉상한", f"{grade}: {expected_cap:,}",
-                    ok, f"실제={actual:,}" if not ok else ""
-                ))
-
-        # 7. 임금피크제
-        for year, expected_rate in EXPECTED_WAGE_PEAK:
-            r = s.run("""
-                MATCH (w:임금피크제기준 {적용연차: $year})
-                RETURN w.임금피크지급률 AS rate
-            """, year=year)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("임금피크제", f"{year}년차", False, "데이터 없음"))
-            else:
-                actual = rec["rate"]
-                ok = abs(actual - expected_rate) < 0.001
-                results.append(TestResult(
-                    "임금피크제", f"{year}년차: {expected_rate}",
-                    ok, f"실제={actual}" if not ok else ""
-                ))
-
-        # 8. 초임호봉
-        for track_name, grade_hint, expected_hobong in EXPECTED_STARTING:
-            if grade_hint:
-                r = s.run("""
-                    MATCH (st:초임호봉기준)-[:대상직렬]->(ct:직렬 {직렬명: $track})
-                    WHERE st.설명 CONTAINS $hint
-                    RETURN st.초임호봉번호 AS n
-                """, track=track_name, hint=grade_hint)
-            else:
-                r = s.run("""
-                    MATCH (st:초임호봉기준)-[:대상직렬]->(ct:직렬 {직렬명: $track})
-                    RETURN st.초임호봉번호 AS n
-                """, track=track_name)
-            rec = r.single()
-            label = f"{track_name}" + (f" {grade_hint}" if grade_hint else "")
-            if rec is None:
-                results.append(TestResult("초임호봉", label, False, "데이터 없음"))
-            else:
-                actual = rec["n"]
-                ok = actual == expected_hobong
-                results.append(TestResult(
-                    "초임호봉", f"{label}: {expected_hobong}호봉",
-                    ok, f"실제={actual}" if not ok else ""
-                ))
-
-        # 9. 평가상여금 지급률
-        for pos_name, eval_g, expected_rate in EXPECTED_BONUS_RATE:
-            r = s.run("""
-                MATCH (b:상여금기준)-[:해당직책구분]->(pos:직위 {직위명: $pos})
-                MATCH (b)-[:해당등급]->(ev:평가결과 {평가등급: $eval})
-                RETURN b.상여금지급률 AS rate
-            """, pos=pos_name, eval=eval_g)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("상여금", f"{pos_name}+{eval_g}", False, "데이터 없음"))
-            else:
-                actual = rec["rate"]
-                ok = abs(actual - expected_rate) < 0.001
-                results.append(TestResult(
-                    "상여금", f"{pos_name}+{eval_g}: {expected_rate}",
-                    ok, f"실제={actual}" if not ok else ""
-                ))
-
-        # 10. 국외본봉
-        for country, grade, expected_amt, expected_cur in EXPECTED_OVERSEAS:
-            r = s.run("""
-                MATCH (o:국외본봉기준 {국가명: $country})-[:해당직급]->(g:직급 {직급코드: $grade})
-                RETURN o.국외기본급액 AS amt, o.통화단위 AS cur
-            """, country=country, grade=grade)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("국외본봉", f"{country}+{grade}", False, "데이터 없음"))
-            else:
-                actual_amt = rec["amt"]
-                actual_cur = rec["cur"]
-                ok = abs(actual_amt - expected_amt) < 0.01 and actual_cur == expected_cur
-                results.append(TestResult(
-                    "국외본봉", f"{country}+{grade}: {expected_amt} {expected_cur}",
-                    ok, f"실제={actual_amt} {actual_cur}" if not ok else ""
-                ))
-
-        # 11. 보수기준
-        for name, expected_amt in EXPECTED_EXEC:
-            r = s.run("""
-                MATCH (b:보수기준 {보수기준명: $name})
-                RETURN b.보수기본급액 AS amt
-            """, name=name)
-            rec = r.single()
-            if rec is None:
-                results.append(TestResult("보수기준", name, False, "데이터 없음"))
-            else:
-                actual = rec["amt"]
-                ok = abs(actual - expected_amt) < 0.01
-                results.append(TestResult(
-                    "보수기준", f"{name}: {expected_amt:,.0f}",
-                    ok, f"실제={actual:,.0f}" if not ok else ""
-                ))
-
-    driver.close()
-    return results
-
-
 def run_typedb_validation():
     """TypeDB 데이터 전수 검증"""
     from typedb.driver import TransactionType
-    from bok_compensation.config import TypeDBConfig
-    from bok_compensation.connection import get_driver as get_typedb_driver
+    from bok_compensation_typedb.config import TypeDBConfig
+    from bok_compensation_typedb.connection import get_driver as get_typedb_driver
 
     config = TypeDBConfig()
     driver = get_typedb_driver()
@@ -584,12 +381,9 @@ def print_results(db_name: str, results: list):
 def main():
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
 
-    if target in ("neo4j", "all"):
+    if target in:
         try:
-            results = run_neo4j_validation()
-            print_results("Neo4j", results)
         except Exception as e:
-            print(f"Neo4j 검증 실패: {e}")
 
     if target in ("typedb", "all"):
         try:

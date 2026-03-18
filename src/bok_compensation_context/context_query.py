@@ -5,13 +5,45 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import sys
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
-from bok_compensation.llm import create_chat_model
-from bok_compensation.question_validation import extract_step_no, validate_question
+from bok_compensation_typedb.llm import create_chat_model
+from bok_compensation_typedb.question_validation import extract_step_no, validate_question
 
 
 CONTEXT_PATH = Path(__file__).with_name("regulation_context.md")
+
+
+def _validation_entities(question: str) -> Dict[str, Any]:
+    return {
+        "grade": next(
+            (
+                grade
+                for grade in ["1급", "2급", "3급", "4급", "5급", "6급", "G1", "G2", "G3", "G4", "G5"]
+                if grade in question
+            ),
+            None,
+        ),
+        "step_no": extract_step_no(question),
+    }
+
+
+def _trace_preview_text(text: str, max_lines: int = 4) -> str:
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    preview = lines[:max_lines]
+    if len(lines) > max_lines:
+        preview.append("...")
+    return "\n".join(preview)
+
+
+def _extract_usage(response: Any) -> Dict[str, int]:
+    usage = getattr(response, "usage_metadata", None) or getattr(response, "response_metadata", {}).get("token_usage") or {}
+    return {
+        "input": int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
+        "output": int(usage.get("output_tokens") or usage.get("completion_tokens") or 0),
+    }
 
 
 def load_context_document() -> str:
@@ -90,10 +122,9 @@ def select_relevant_sections(question: str, *, top_k: int = 8) -> List[Dict[str,
     return selected or sections[:top_k]
 
 
-def build_context_prompt(question: str) -> Tuple[str, List[Dict[str, str]]]:
-    selected_sections = select_relevant_sections(question)
+def _compose_context_prompt(question: str, selected_sections: List[Dict[str, str]]) -> str:
     selected_text = "\n\n".join(section["content"] for section in selected_sections)
-    prompt = f"""당신은 한국은행 보수규정 질의 응답 보조 모델입니다.
+    return f"""당신은 한국은행 보수규정 질의 응답 보조 모델입니다.
 반드시 아래에 제공된 전처리 문서 내용만 근거로 답하세요.
 문서 밖의 지식은 사용하지 마세요.
 숫자와 통화는 문서에 나온 값을 그대로 쓰세요.
@@ -116,49 +147,151 @@ def build_context_prompt(question: str) -> Tuple[str, List[Dict[str, str]]]:
 {selected_text}
 
 답변:"""
+
+
+def build_context_prompt(question: str) -> Tuple[str, List[Dict[str, str]]]:
+    selected_sections = select_relevant_sections(question)
+    prompt = _compose_context_prompt(question, selected_sections)
     return prompt, selected_sections
 
 
+def _invoke_context_answer(prompt: str) -> Tuple[str, Dict[str, int]]:
+    try:
+        from langchain_core.messages import HumanMessage
+    except ImportError:
+        return prompt, {"input": 0, "output": 0}
+
+    model = create_chat_model(temperature=0.0)
+    response = model.invoke([HumanMessage(content=prompt)])
+    return str(response.content), _extract_usage(response)
+
+
 def answer_with_context(question: str) -> Tuple[str, List[Dict[str, str]]]:
-    validation = validate_question(question, {"grade": next((grade for grade in ["1급", "2급", "3급", "4급", "5급", "6급", "G1", "G2", "G3", "G4", "G5"] if grade in question), None), "step_no": extract_step_no(question)})
+    validation = validate_question(question, _validation_entities(question))
     if validation is not None:
         return validation["message"], []
 
     prompt, sections = build_context_prompt(question)
-    try:
-        from langchain_core.messages import HumanMessage
-    except ImportError:
-        return prompt, sections
-
-    model = create_chat_model(temperature=0.0)
-    response = model.invoke([HumanMessage(content=prompt)])
-    return str(response.content), sections
+    answer, _ = _invoke_context_answer(prompt)
+    return answer, sections
 
 
 def run_with_trace(question: str) -> Dict[str, object]:
-    validation = validate_question(question, {"grade": next((grade for grade in ["1급", "2급", "3급", "4급", "5급", "6급", "G1", "G2", "G3", "G4", "G5"] if grade in question), None), "step_no": extract_step_no(question)})
+    validation_entities = _validation_entities(question)
+    function_calls: List[Dict[str, Any]] = []
+
+    validation = validate_question(question, validation_entities)
+    function_calls.append(
+        {
+            "module": "src/bok_compensation_context/context_query.py",
+            "function": "validate_question",
+            "arguments": {
+                "question": question,
+                "entities": validation_entities,
+            },
+            "result": {
+                "is_valid": validation is None,
+                "message": None if validation is None else validation.get("message"),
+                "issues": [] if validation is None else validation.get("issues") or [],
+            },
+            "next_inputs": [] if validation is not None else [
+                {
+                    "function": "select_relevant_sections",
+                    "values": {"question": question, "top_k": 8},
+                }
+            ],
+        }
+    )
+
     if validation is not None:
         return {
             "answer": validation["message"],
             "trace": {
                 "question": question,
-                "query_language": "Context-only",
                 "validation": validation,
-                "selected_sections": [],
-                "section_count": 0,
-                "context_excerpt": "",
+                "function_calls": function_calls,
+                "token_usage": {"input": 0, "output": 0},
             },
         }
 
-    answer, sections = answer_with_context(question)
+    sections = select_relevant_sections(question)
+    function_calls.append(
+        {
+            "module": "src/bok_compensation_context/context_query.py",
+            "function": "select_relevant_sections",
+            "arguments": {"question": question, "top_k": 8},
+            "result": {
+                "section_count": len(sections),
+                "selected_sections": [section["title"] for section in sections],
+                "context_preview": _trace_preview_text("\n\n".join(section["content"] for section in sections), max_lines=6),
+            },
+            "next_inputs": [
+                {
+                    "function": "build_context_prompt",
+                    "values": {
+                        "question": question,
+                        "selected_sections": [section["title"] for section in sections],
+                    },
+                }
+            ],
+        }
+    )
+
+    prompt = _compose_context_prompt(question, sections)
+    function_calls.append(
+        {
+            "module": "src/bok_compensation_context/context_query.py",
+            "function": "build_context_prompt",
+            "arguments": {
+                "question": question,
+                "selected_sections": [section["title"] for section in sections],
+            },
+            "result": {
+                "section_count": len(sections),
+                "prompt_preview": _trace_preview_text(prompt, max_lines=8),
+            },
+            "next_inputs": [
+                {
+                    "function": "_invoke_context_answer",
+                    "values": {
+                        "selected_sections": [section["title"] for section in sections],
+                        "prompt_preview": _trace_preview_text(prompt, max_lines=8),
+                    },
+                }
+            ],
+        }
+    )
+
+    answer, token_usage = _invoke_context_answer(prompt)
+    function_calls.append(
+        {
+            "module": "src/bok_compensation_context/context_query.py",
+            "function": "_invoke_context_answer",
+            "arguments": {
+                "selected_sections": [section["title"] for section in sections],
+            },
+            "llm_input": {
+                "question": question,
+                "selected_sections": [section["title"] for section in sections],
+            },
+            "llm_prompt": prompt,
+            "llm_messages": [
+                {"role": "human", "content": prompt},
+            ],
+            "result": {
+                "answer": answer,
+                "token_usage": token_usage,
+            },
+            "next_inputs": [],
+        }
+    )
+
     return {
         "answer": answer,
         "trace": {
             "question": question,
-            "query_language": "Context-only",
-            "selected_sections": [section["title"] for section in sections],
-            "section_count": len(sections),
-            "context_excerpt": "\n\n".join(section["content"] for section in sections),
+            "function_calls": function_calls,
+            "token_usage": token_usage,
         },
     }
 

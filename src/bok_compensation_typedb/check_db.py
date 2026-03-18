@@ -1,7 +1,7 @@
 """DB 데이터 확인 스크립트"""
 from typedb.driver import TransactionType
-from bok_compensation.config import TypeDBConfig
-from bok_compensation.connection import get_driver
+from bok_compensation_typedb.config import TypeDBConfig
+from bok_compensation_typedb.connection import get_driver
 
 config = TypeDBConfig()
 driver = get_driver(config)

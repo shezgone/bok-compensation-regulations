@@ -1,13 +1,15 @@
 """Shared LLM configuration for Ollama and OpenAI-compatible backends."""
 
 import os
-from typing import Any
+from typing import Any, List
 
 
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b-instruct"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 DEFAULT_OPENAI_MODEL = "your-model-name"
 DEFAULT_OPENAI_BASE_URL = "http://localhost:8000/v1"
+DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 def get_llm_provider() -> str:
@@ -24,6 +26,12 @@ def get_llm_model_name() -> str:
     if get_llm_provider() == "ollama":
         return os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
     return os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+
+
+def get_embedding_model_name() -> str:
+    if get_llm_provider() == "ollama":
+        return os.getenv("OLLAMA_EMBEDDING_MODEL", DEFAULT_OLLAMA_EMBEDDING_MODEL)
+    return os.getenv("OPENAI_EMBEDDING_MODEL", DEFAULT_OPENAI_EMBEDDING_MODEL)
 
 
 def create_chat_model(*, temperature: float = 0.0, json_output: bool = False) -> Any:
@@ -56,3 +64,35 @@ def create_chat_model(*, temperature: float = 0.0, json_output: bool = False) ->
         return model
 
     raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
+
+
+def create_embedding_model() -> Any:
+    provider = get_llm_provider()
+    model_name = get_embedding_model_name()
+
+    if provider == "ollama":
+        from langchain_ollama import OllamaEmbeddings
+
+        return OllamaEmbeddings(
+            model=model_name,
+            base_url=os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL),
+        )
+
+    if provider == "openai-compatible":
+        from langchain_openai import OpenAIEmbeddings
+
+        return OpenAIEmbeddings(
+            model=model_name,
+            base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
+            api_key=os.getenv("OPENAI_API_KEY", "unused"),
+        )
+
+    raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
+
+
+def embed_text(text: str) -> List[float]:
+    model = create_embedding_model()
+    if hasattr(model, "embed_query"):
+        return list(model.embed_query(text))
+    documents = model.embed_documents([text])
+    return list(documents[0]) if documents else []

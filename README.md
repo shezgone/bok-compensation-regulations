@@ -416,6 +416,13 @@ PYTHONPATH=src python -m bok_compensation.insert_data
 # Neo4j
 PYTHONPATH=src python -m bok_compensation_neo4j.create_schema
 PYTHONPATH=src python -m bok_compensation_neo4j.insert_data
+
+# Neo4j vector search metadata + embeddings
+export NEO4J_VECTOR_ENABLED=1
+export NEO4J_VECTOR_DIMENSIONS=1536
+export OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+PYTHONPATH=src python -m bok_compensation_neo4j.create_schema
+PYTHONPATH=src python -m bok_compensation_neo4j.build_vector_index
 ```
 
 ### LLM 설정
@@ -477,12 +484,39 @@ PYTHONPATH=src python tests/test_nl_pipeline.py compare
 | `TYPEDB_DATABASE` | `bok-compensation-regulations` | TypeDB 데이터베이스명 |
 | `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt 주소 |
 | `NEO4J_USERNAME` / `NEO4J_PASSWORD` | `neo4j` / `password` | Neo4j 인증 |
+| `NEO4J_VECTOR_ENABLED` | `0` | Neo4j vector index 검색 활성화 |
+| `NEO4J_VECTOR_INDEX_NAME` | `search_target_embeddings` | Neo4j vector index 이름 |
+| `NEO4J_VECTOR_DIMENSIONS` | `1536` | 임베딩 차원 수. 사용 모델과 반드시 일치해야 함 |
+| `NEO4J_VECTOR_TOP_K` | `6` | vector 검색 후보 수 |
+| `NEO4J_VECTOR_MIN_SCORE` | `0.72` | vector 후보 최소 유사도 컷오프 |
+| `NEO4J_VECTOR_RERANK_TOPIC_WEIGHT` | `0.08` | topic 일치 가중치 |
+| `NEO4J_VECTOR_RERANK_ENTITY_WEIGHT` | `0.10` | grade/position/eval 등 엔티티 일치 가중치 |
+| `NEO4J_VECTOR_RERANK_KIND_BONUS` | `0.18` | intent와 맞는 노드 종류 보너스 |
+| `NEO4J_VECTOR_RERANK_ARTICLE_BONUS` | `0.24` | article 직접 일치 보너스 |
+| `OPENAI_EMBEDDING_MODEL` / `OLLAMA_EMBEDDING_MODEL` | `text-embedding-3-small` / `nomic-embed-text` | vector 검색용 임베딩 모델 |
 | `LLM_PROVIDER` | `openai-compatible` | `openai-compatible` 또는 `ollama` |
 | `OPENAI_BASE_URL` | — | OpenAI 호환 API 주소 |
 | `OPENAI_MODEL` | — | 사용 모델명 |
 | `BOK_USE_LIVE_CATALOG` | `1` | DB 실시간 값 바인딩 사용 |
 | `BOK_USE_KEY_BINDING` | `1` | 규칙 행 key binding 사용 |
 | `BOK_QUERY_TRACE_DIR` | (미설정) | 쿼리 trace JSON 저장 경로 |
+
+Neo4j vector 검색 운영 순서:
+
+```bash
+cp .env.example .env
+source .venv/bin/activate
+export $(grep -v '^#' .env | xargs)
+
+PYTHONPATH=src python -m bok_compensation_neo4j.create_schema
+PYTHONPATH=src python -m bok_compensation_neo4j.insert_data
+PYTHONPATH=src python -m bok_compensation_neo4j.build_vector_index
+```
+
+주의:
+- `NEO4J_VECTOR_DIMENSIONS` 값은 임베딩 모델 차원과 반드시 같아야 합니다.
+- 임베딩 모델을 바꾸면 `build_vector_index`를 다시 실행해야 합니다.
+- `NEO4J_VECTOR_RERANK_*` 값으로 topic/entity 중심 랭킹 민감도를 조절할 수 있습니다.
 
 ---
 
@@ -501,3 +535,35 @@ PYTHONPATH=src python tests/test_nl_pipeline.py compare
 - **시간축 질의**: "2024년 12월 기준 vs 2025년 5월 기준"처럼 시점에 따라 적용 규정이 달라지는 질의는 `대체시행일`/`대체만료일`로 필터링 가능하나, 파이프라인 자동 적용은 향후 과제.
 - **복합 산술**: 직책급 + 상여금 + 차등액 + 상한 검증 등 4개 이상의 별표를 조인하는 복합 질의는 규칙 템플릿 확장이 필요.
 - **LLM TypeQL 생성**: TypeDB 3.x TypeQL은 LLM이 자유 생성하기 어려운 구문이므로, 규칙 기반 플래너 의존도가 높음.
+
+
+---
+
+## 최신 아키텍처: 공통 LangGraph ReAct Pattern
+
+Graph RAG (Neo4j, TypeDB) 모두 모델이 단일 프롬프트에서 한 번에 정답을 도출하는 "One-Shot" 방식에서 벗어나, **LangGraph 기반 ReAct (Reasoning and Acting) 설계**로 진화했습니다.
+이는 복잡한 조건(직급, 성과등급의 다중 조인 등)을 처리하기 위해 시스템이 자율적으로 상태(state)를 유지하고, 반복적인 질의(loop)를 거쳐 완성된 답변을 찾아가는 에이전트 구조입니다.
+
+- **ReAct Loop Flow**:
+  1. `Tool Calling Mode`: 사용자의 질문을 받은 LangChain이 데이터베이스 스키마를 확인.
+  2. `Query Execution`: TypeQL(또는 Cypher) 쿼리를 작성해 Graph DB Tool(자체 정의 함수)을 호출.
+  3. `Reasoning`: 반환받은 결괏값을 확인하고, 추가 정보가 필요한지 판단하여 추가 쿼리나 도구 호출을 수행.
+  4. `Final Answer`: 필요한 모든 정보가 모이면 루프를 멈추고 최종 답변을 한국어로 정리.
+- **적용 효과**: 하나의 Python 스크립트로 하드코딩하던 로직을 모두 없애고(`deterministic_executor.py` 등 폐기), 단일 LangGraph Agent(`agent.py`)가 Neo4j와 TypeDB 양쪽 각각에서 완벽한 추론을 수행하도록 순수 그래프 기반 자율 에이전트 환경으로 통합 구축 완료했습니다.
+
+
+
+---
+
+## 최신 아키텍처: 공통 LangGraph ReAct Pattern
+
+Graph RAG (Neo4j, TypeDB) 모두 모델이 단일 프롬프트에서 한 번에 정답을 도출하는 "One-Shot" 방식에서 벗어나, **LangGraph 기반 ReAct (Reasoning and Acting) 설계**로 진화했습니다.
+이는 복잡한 조건(직급, 성과등급의 다중 조인 등)을 처리하기 위해 시스템이 자율적으로 상태(state)를 유지하고, 반복적인 질의(loop)를 거쳐 완성된 답변을 찾아가는 에이전트 구조입니다.
+
+- **ReAct Loop Flow**:
+  1. `Tool Calling Mode`: 사용자의 질문을 받은 LangChain이 데이터베이스 스키마를 확인.
+  2. `Query Execution`: TypeQL(또는 Cypher) 쿼리를 작성해 Graph DB Tool(자체 정의 함수)을 호출.
+  3. `Reasoning`: 반환받은 결괏값을 확인하고, 추가 정보가 필요한지 판단하여 추가 쿼리나 도구 호출을 수행.
+  4. `Final Answer`: 필요한 모든 정보가 모이면 루프를 멈추고 최종 답변을 한국어로 정리.
+- **적용 효과**: 하나의 Python 스크립트로 하드코딩하던 로직을 모두 없애고(`deterministic_executor.py` 등 폐기), 단일 LangGraph Agent(`agent.py`)가 Neo4j와 TypeDB 양쪽 각각에서 완벽한 추론을 수행하도록 순수 그래프 기반 자율 에이전트 환경으로 통합 구축 완료했습니다.
+
