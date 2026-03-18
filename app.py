@@ -5,6 +5,7 @@ import sys
 import time
 import traceback
 import json
+import re
 from textwrap import dedent
 from typing import List, Optional, Tuple
 
@@ -404,6 +405,74 @@ def _render_missing_input_tags(items: List[str]) -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
+def _extract_reference_labels(trace: dict) -> List[str]:
+    references: List[str] = []
+    seen = set()
+
+    def add_reference(label: str) -> None:
+        if label not in seen:
+            seen.add(label)
+            references.append(label)
+
+    rules_context = trace.get("rules_context") or ""
+    for match in re.findall(r"부칙 제\s*(\d+)조", rules_context):
+        add_reference(f"부칙 제{match}조")
+    for match in re.findall(r"(?<!부칙 )제\s*(\d+)조", rules_context):
+        add_reference(f"제{match}조")
+
+    deterministic = trace.get("deterministic_execution") or {}
+    values = deterministic.get("values") or {}
+    articles = values.get("articles") or []
+    for article_no in articles:
+        add_reference(f"제{article_no}조")
+
+    article_no = (trace.get("entities") or {}).get("article_no")
+    if article_no is not None:
+        add_reference(f"제{article_no}조")
+
+    return references[:6]
+
+
+def _build_process_lines(trace: dict) -> List[str]:
+    validation = trace.get("validation") or {}
+    if validation:
+        issues = validation.get("issues") or []
+        lines = ["질문 검증 단계에서 계산 가능 여부를 먼저 확인했습니다."]
+        if issues:
+            lines.append(issues[0])
+        return lines
+
+    deterministic = trace.get("deterministic_execution") or {}
+    steps = deterministic.get("steps") or []
+    if steps:
+        return steps[:4]
+
+    graph_plan = ((trace.get("retrieval_plan") or {}).get("graph") or [])
+    executed_items = [item for item in graph_plan if item.get("executed")]
+    lines = []
+    for item in executed_items[:4]:
+        name = item.get("name") or "조회"
+        reason = item.get("reason") or ""
+        row_count = item.get("row_count")
+        suffix = f" 결과 {_format_simple_value(row_count)}건" if row_count is not None else ""
+        lines.append(f"{name}를 실행했습니다.{suffix} {reason}".strip())
+    return lines
+
+
+def _render_result_card_summary(trace: dict) -> None:
+    references = _extract_reference_labels(trace)
+    process_lines = _build_process_lines(trace)
+
+    if references:
+        st.caption("참조 번호")
+        st.write(" · ".join(references))
+
+    if process_lines:
+        st.caption("처리 과정 요약")
+        for line in process_lines:
+            st.write(f"- {line}")
+
+
 def _render_flow_overview(trace: dict) -> None:
     backend = _backend_descriptor(trace)
     deterministic = trace.get("deterministic_execution")
@@ -760,6 +829,7 @@ if st.session_state.get("results"):
             else:
                 st.success("실행 완료")
                 st.markdown(result["answer"])
+                _render_result_card_summary(result.get("trace") or {})
                 with st.expander("Trace"):
                     _render_trace(result.get("trace") or {})
 
