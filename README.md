@@ -94,10 +94,11 @@ flowchart TD
 - **Neo4j:** 노드(Node)와 관계(Relationship)의 직관적인 연결로 수당 및 급여 체계를 표현.
 - **TypeDB:** 보다 엄격한 타입 시스템(TypeQL)을 사용하여 엔티티, 관계, 속성을 온톨로지(Ontology) 형태로 강력히 규제하여 잘못된 데이터 삽입과 무의미한 추론을 방지.
 
-### 2.2. ReAct (Reasoning and Acting) 기반 LangGraph 엔진
+### 2.2. ReAct 및 Reflection(비판적 회고) 기반 LangGraph 엔진
 AI 모델이 사용자의 질문을 받으면 **어떤 도구를 사용해야 할지 스스로 추론(Reasoning)하고 행동(Acting)** 하도록 설계했습니다.
-- 문서 검색 도구(`search_regulations`): 법률 조문, 처벌, 감액 규정 등 "텍스트" 해석 필요시 사용.
-- 그래프 질의 도구(`execute_typeql` / `execute_cypher`): 정확한 급여 숫자를 "행과 열" 구조에서 찾아야 할 때 사용.
+- **문서 검색 도구(`search_regulations`)**: 법률 조문, 처벌, 감액 규정 등 "텍스트" 해석 필요시 사용.
+- **그래프 질의 도구(`execute_typeql` / `execute_cypher`)**: 정확한 급여 숫자를 "행과 열" 구조에서 찾아야 할 때 사용.
+- **Reflection (비판적 회고)**: Agent가 쿼리 작성에 실패하거나 틀린 스키마를 참조했을 때 오류 메시지(`Observation`)를 즉각 분석하고, **왜 실패했는지 스스로 파악하여 수정된 쿼리로 재시도(__Self-Correction__)** 하는 회고 사이클을 LangGraph Edge에 융합했습니다.
 
 ### 2.3. Hybrid RAG (Graph Data + Vector Search)
 언어 모델(LLM)이 단순히 긴 컨텍스트(Context)를 읽고 환각(Hallucination)으로 답변을 만들어 내지 않게 하기 위해, 명확한 수치는 지식 그래프에서, 절차적 텍스트는 벡터 RAG에서 동시에 가져와 최종 답변을 생성하도록 조율(Orchestration)했습니다.
