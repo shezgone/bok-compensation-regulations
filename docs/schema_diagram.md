@@ -149,23 +149,24 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    classDef axis fill:#0f766e,stroke:#99f6e4,stroke-width:2px,color:#ffffff;
-    classDef rel fill:#b45309,stroke:#fde68a,stroke-width:2px,color:#ffffff,shape:diamond;
-    classDef std fill:#1d4ed8,stroke:#93c5fd,stroke-width:2px,color:#ffffff;
+    %% 🎨 노드 스타일 정의 (Tailwind 기반 모던 컬러)
+    classDef axis fill:#EFF6FF,stroke:#2563EB,stroke-width:2px,color:#1E3A8A,font-weight:bold,rx:8,ry:8
+    classDef rel fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#92400E,font-weight:bold
+    classDef std fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,color:#166534,font-weight:bold,rx:5,ry:5
 
-    G["직급: 3급"]:::axis
-    P["직위: 팀장"]:::axis
-    E["평가: EX"]:::axis
-    H{"호봉체계구성"}:::rel
-    PP{"직책급결정"}:::rel
-    B{"상여금결정"}:::rel
-    D{"연봉차등"}:::rel
-    C{"연봉상한"}:::rel
-    Step["호봉"]:::std
-    PosStd["직책급기준"]:::std
-    Bonus["상여금기준"]:::std
-    Diff["연봉차등액기준"]:::std
-    Cap["연봉상한액기준"]:::std
+    G["🏅 직급: 3급"]:::axis
+    P["🎯 직위: 팀장"]:::axis
+    E["📈 평가: EX"]:::axis
+    H{"호봉체계\n구성"}:::rel
+    PP{"직책급\n결정"}:::rel
+    B{"상여금\n결정"}:::rel
+    D{"연봉\n차등"}:::rel
+    C{"연봉\n상한"}:::rel
+    Step["보수표: 호봉"]:::std
+    PosStd["보수표: 직책급기준"]:::std
+    Bonus["보수표: 상여금기준"]:::std
+    Diff["보수표: 연봉차등액기준"]:::std
+    Cap["보수표: 연봉상한액기준"]:::std
 
     G --> H --> Step
     G --> PP
@@ -181,16 +182,17 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    classDef axis fill:#0f766e,stroke:#99f6e4,stroke-width:2px,color:#ffffff;
-    classDef rel fill:#b45309,stroke:#fde68a,stroke-width:2px,color:#ffffff,shape:diamond;
-    classDef std fill:#1d4ed8,stroke:#93c5fd,stroke-width:2px,color:#ffffff;
+    %% 🎨 노드 스타일 정의 (Tailwind 기반 모던 컬러)
+    classDef axis fill:#EFF6FF,stroke:#2563EB,stroke-width:2px,color:#1E3A8A,font-weight:bold,rx:8,ry:8
+    classDef rel fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#92400E,font-weight:bold
+    classDef std fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,color:#166534,font-weight:bold,rx:5,ry:5
 
-    J["직렬: 종합기획직원"]:::axis
-    Init{"초임호봉결정"}:::rel
-    InitStd["초임호봉기준"]:::std
-    G["직급"]:::axis
-    Pay{"호봉체계구성"}:::rel
-    Step["호봉"]:::std
+    J["💼 직렬: 종합기획직원"]:::axis
+    Init{"초임호봉\n결정"}:::rel
+    InitStd["보수표: 초임호봉기준"]:::std
+    G["🏅 직급"]:::axis
+    Pay{"호봉체계\n구성"}:::rel
+    Step["보수표: 호봉"]:::std
 
     J --> Init --> InitStd
     G --> Pay --> Step
@@ -200,13 +202,14 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    classDef axis fill:#0f766e,stroke:#99f6e4,stroke-width:2px,color:#ffffff;
-    classDef rel fill:#b45309,stroke:#fde68a,stroke-width:2px,color:#ffffff,shape:diamond;
-    classDef std fill:#1d4ed8,stroke:#93c5fd,stroke-width:2px,color:#ffffff;
+    %% 🎨 노드 스타일 정의 (Tailwind 기반 모던 컬러)
+    classDef axis fill:#EFF6FF,stroke:#2563EB,stroke-width:2px,color:#1E3A8A,font-weight:bold,rx:8,ry:8
+    classDef rel fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#92400E,font-weight:bold
+    classDef std fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,color:#166534,font-weight:bold,rx:5,ry:5
 
-    G["직급: 1급"]:::axis
-    O{"국외본봉결정"}:::rel
-    Std["국외본봉기준\n국가명=미국"]:::std
+    G["🏅 직급: 1급"]:::axis
+    O{"국외본봉\n결정"}:::rel
+    Std["보수표: 국외본봉기준\n(국가명=미국)"]:::std
 
     G --> O --> Std
 ```
