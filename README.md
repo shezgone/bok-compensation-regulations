@@ -17,76 +17,88 @@
 
 ```mermaid
 flowchart TD
-    classDef entity fill:#1a365d,stroke:#63b3ed,stroke-width:2px,color:#ffffff;
-    classDef relation fill:#7b341e,stroke:#fbd38d,stroke-width:2px,color:#ffffff,shape:diamond;
-
-    subgraph 규정_체계["1. 규정 체계 및 오버라이드 구조"]
+    %% 🎨 노드 스타일 정의 (Tailwind 기반 모던 컬러)
+    classDef doc fill:#F1F5F9,stroke:#475569,stroke-width:2px,color:#0F172A,font-weight:bold,rx:5,ry:5
+    classDef entity fill:#EFF6FF,stroke:#2563EB,stroke-width:2px,color:#1E3A8A,font-weight:bold,rx:8,ry:8
+    classDef relation fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#92400E,font-weight:bold
+    
+    %% 🏛️ 1. 규정 체계
+    subgraph Cluster_Rule ["🏛️ 1. 규정 체계 및 오버라이드 구조 "]
         direction LR
-        Regulation["규정"]:::entity
-        Article["조문\n(본문)"]:::entity
-        Addendum["부칙\n(경과조치)"]:::entity
-        History["개정이력"]:::entity
+        Regulation["📜 규정"]:::doc
+        Article["📄 조문 (본문)"]:::doc
+        Addendum["📑 부칙 (경과조치)"]:::doc
+        History["⏳ 개정이력"]:::doc
         
-        Rel_Comp{"규정구성"}:::relation
+        Rel_Comp{"구성\n관계"}:::relation
         Rel_Override{"규정_대체\n(Override)"}:::relation
-        Rel_Rev{"규정개정"}:::relation
+        Rel_Rev{"개정\n관계"}:::relation
 
-        Regulation -->|상위| Rel_Comp -->|하위| Article
-        Regulation -->|개정| Rel_Rev -->|이력| History
-        Article -. 구 규정 .-> Rel_Override
-        Addendum -. 신 규정 .-> Rel_Override
+        Regulation ===>|상위| Rel_Comp ===>|하위| Article
+        Regulation --->|개정 대상| Rel_Rev --->|이력 기록| History
+        Article -. 구 규정 .-x Rel_Override
+        Addendum === 신 규정 ===> Rel_Override
     end
 
-    subgraph 인사_체계["2. 인사 체계 축 (분류 기준)"]
+    %% 👤 2. 인사 체계
+    subgraph Cluster_HR ["👤 2. 인사 체계 축 (조건 입력값)"]
         direction LR
-        JobGroup["직렬"]:::entity
-        Rank["직급"]:::entity
-        Position["직위"]:::entity
-        Eval["평가결과"]:::entity
+        JobGroup["💼 직렬"]:::entity
+        Rank["🏅 직급"]:::entity
+        Position["🎯 직위"]:::entity
+        Eval["📈 평가결과"]:::entity
     end
 
-    subgraph 기준_엔티티["3. 기준 데이터 (금액/비율) 및 독립 엔티티"]
-        direction LR
-        PayStep["호봉"]:::entity
-        InitStep["초임호봉기준"]:::entity
-        PosPayStd["직책급기준"]:::entity
-        BonusStd["상여금기준"]:::entity
-        SalDiffStd["연봉차등기준"]:::entity
-        SalCapStd["연봉상한기준"]:::entity
-        OverseasStd["국외본봉기준"]:::entity
-        Allowance["수당"]:::entity
-        WagePeak["임금피크제기준"]:::entity
-        BasePay["보수기준"]:::entity
-    end
-
-    규정_체계 ~~~ 인사_체계
-    인사_체계 ~~~ 기준_엔티티
-
-    subgraph 핵심_결정_관계["4. 핵심 N-ary 차원 연결 관계"]
+    %% 🔗 3. 핵심 결정 관계
+    subgraph Cluster_Rel ["🔗 3. 핵심 결정 구조 (N-ary Relations)"]
         direction TB
         Rel_InitStep{"초임호봉\n결정"}:::relation
         Rel_PayStep{"호봉체계\n구성"}:::relation
         Rel_PositionPay{"직책급\n결정"}:::relation
-        Rel_Bonus{"상여금\n결정"}:::relation
-        Rel_SalDiff{"연봉\n차등"}:::relation
         Rel_SalCap{"연봉\n상한"}:::relation
         Rel_Overseas{"국외본봉\n결정"}:::relation
+        Rel_Bonus{"상여금\n결정"}:::relation
+        Rel_SalDiff{"연봉\n차등"}:::relation
     end
 
-    JobGroup -. 직렬 .-> Rel_InitStep --> InitStep
-    Rank -. 직급 .-> Rel_PayStep --> PayStep
-    
-    Rank -. 직급 .-> Rel_PositionPay
-    Position -. 직위 .-> Rel_PositionPay --> PosPayStd
-    
-    Position -. 직위 .-> Rel_Bonus
-    Eval -. 등급 .-> Rel_Bonus --> BonusStd
-    
-    Rank -. 직급 .-> Rel_SalDiff
-    Eval -. 등급 .-> Rel_SalDiff --> SalDiffStd
+    %% 💰 4. 산출 체계
+    subgraph Cluster_Std ["💰 4. 기준 데이터 (최종 결괏값)"]
+        direction LR
+        InitStep["초임호봉"]:::entity
+        PayStep["호봉결과"]:::entity
+        PosPayStd["직책급"]:::entity
+        SalCapStd["연봉상한"]:::entity
+        OverseasStd["국외본봉"]:::entity
+        BonusStd["상여금"]:::entity
+        SalDiffStd["연봉차등"]:::entity
+    end
 
-    Rank -. 직급 .-> Rel_SalCap --> SalCapStd
-    Rank -. 직급 .-> Rel_Overseas --> OverseasStd
+    %% 그룹 간 배치를 위한 가상 선 설정
+    Cluster_Rule ~~~ Cluster_HR
+    Cluster_HR ~~~ Cluster_Rel
+    Cluster_Rel ~~~ Cluster_Std
+
+    %% 매핑 선: 인사체계 -> 관계 -> 산출기준
+    JobGroup ---> Rel_InitStep ---> InitStep
+    Rank ---> Rel_PayStep ---> PayStep
+    
+    Rank ---> Rel_PositionPay
+    Position ---> Rel_PositionPay ---> PosPayStd
+    
+    Rank ---> Rel_SalCap ---> SalCapStd
+    Rank ---> Rel_Overseas ---> OverseasStd
+    
+    Position ---> Rel_Bonus
+    Eval ---> Rel_Bonus ---> BonusStd
+    
+    Rank ---> Rel_SalDiff
+    Eval ---> Rel_SalDiff ---> SalDiffStd
+
+    %% 🎨 서브그래프 스타일 직접 적용 (둥근 테두리 및 배경색)
+    style Cluster_Rule fill:#FFFFFF,stroke:#CBD5E1,stroke-width:2px,rx:10,ry:10
+    style Cluster_HR fill:#F8FAFC,stroke:#93C5FD,stroke-width:2px,rx:10,ry:10
+    style Cluster_Rel fill:#FFFBEB,stroke:#FDE68A,stroke-width:2px,rx:10,ry:10
+    style Cluster_Std fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,rx:10,ry:10
 ```
 > 상세한 스키마 다이어그램, 엔티티 설명 및 에이전트의 실제 질의 파싱 경로(Query Path) 예시는 **[docs/schema_diagram.md](docs/schema_diagram.md)** 문서에서 확인하실 수 있습니다.
 

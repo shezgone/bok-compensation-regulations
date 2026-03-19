@@ -8,108 +8,111 @@
 
 ```mermaid
 flowchart TD
-    classDef entity fill:#1a365d,stroke:#63b3ed,stroke-width:2px,color:#ffffff;
-    classDef relation fill:#7b341e,stroke:#fbd38d,stroke-width:2px,color:#ffffff,shape:diamond;
-    classDef note fill:#f7fafc,stroke:#94a3b8,stroke-width:1.5px,color:#0f172a;
+    %% 🎨 노드 스타일 정의 (Tailwind 기반 모던 컬러)
+    classDef doc fill:#F1F5F9,stroke:#475569,stroke-width:2px,color:#0F172A,font-weight:bold,rx:5,ry:5
+    classDef entity fill:#EFF6FF,stroke:#2563EB,stroke-width:2px,color:#1E3A8A,font-weight:bold,rx:8,ry:8
+    classDef relation fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#92400E,font-weight:bold
+    classDef note fill:#F8FAFC,stroke:#94A3B8,stroke-width:1.5px,color:#334155,stroke-dasharray: 5 5
 
-    subgraph Legend["Legend"]
+    subgraph Legend["💡 범례 (Legend)"]
         direction LR
-        L1["엔티티\n(실체/기준표)"]:::entity
-        L2{"관계\n(N-ary relation)"}:::relation
-        L3["단독 기준 엔티티\n직접 조회 중심"]:::note
+        L1["엔티티 (실체/기준표)"]:::entity
+        L2{"관계 (N-ary relation)"}:::relation
+        L3["단독 기준 엔티티"]:::note
     end
 
-    subgraph 규정_체계["규정 체계"]
+    subgraph 규정_체계["🏛️ 1. 규정 체계 (Regulation Structure)"]
         direction LR
-        Regulation["규정\nkey: 규정번호\nprops: 규정명, 시행일"]:::entity
-        Rel_Comp{"규정구성"}:::relation
-        Article["조문\n조번호/항번호/호번호\nprops: 조문내용"]:::entity
-        Addendum["부칙\nprops: 부칙내용"]:::entity
-        Rel_Rev{"규정개정"}:::relation
-        History["개정이력\n개정일\nprops: 개정이력설명"]:::entity
+        Regulation["📜 규정\nkey: 규정번호\nprops: 규정명, 시행일"]:::doc
+        Rel_Comp{"구성\n관계"}:::relation
+        Article["📄 조문 (본문)\n조/항/호번호\nprops: 조문내용"]:::doc
+        Addendum["📑 부칙 (경과조치)\nprops: 부칙내용"]:::doc
+        Rel_Rev{"개정\n관계"}:::relation
+        History["⏳ 개정이력\n개정일\nprops: 이력설명"]:::doc
         Rel_Override{"규정_대체\n(Override)"}:::relation
 
-        Regulation -->|상위규정| Rel_Comp -->|하위조문| Article
-        Regulation -->|대상규정| Rel_Rev -->|이력| History
-        Article -. 구 규정 .-> Rel_Override
-        Addendum -. 신 규정 .-> Rel_Override
+        Regulation ===>|상위규정| Rel_Comp ===>|하위조문| Article
+        Regulation --->|대상규정| Rel_Rev --->|이력| History
+        Article -. 구 규정 .-x Rel_Override
+        Addendum === 신 규정 ===> Rel_Override
     end
 
-    subgraph 인사_체계["인사 체계"]
+    subgraph 인사_체계["👤 2. 인사 체계 (HR Axis)"]
         direction LR
-        JobGroup["직렬\nkey: 직렬코드\nprops: 직렬명"]:::entity
-        Rel_Class{"직렬분류"}:::relation
-        Rank["직급\nkey: 직급코드\nprops: 직급명, 직급서열"]:::entity
-        Position["직위\nkey: 직위코드\nprops: 직위명, 직위서열"]:::entity
-        Eval["평가결과\nkey: 평가등급\nprops: 승급호봉수, 배분율"]:::entity
+        JobGroup["💼 직렬\nkey: 직렬코드"]:::entity
+        Rel_Class{"직렬\n분류"}:::relation
+        Rank["🏅 직급\nkey: 직급코드"]:::entity
+        Position["🎯 직위\nkey: 직위코드"]:::entity
+        Eval["📈 평가결과\nkey: 평가등급"]:::entity
 
-        JobGroup -->|분류직렬| Rel_Class -->|분류직급| Rank
+        JobGroup --->|분류직렬| Rel_Class --->|분류직급| Rank
     end
 
-    subgraph 기준_엔티티["보수 기준 엔티티"]
+    subgraph 기준_엔티티["💰 3. 보수 기준 엔티티 (Compensation Standards)"]
         direction TB
 
-        subgraph 관계형_기준["관계형 기준표"]
+        subgraph 관계형_기준["🔗 관계형 기준표"]
             direction LR
-            PayStep["호봉\nprops: 호봉번호, 호봉금액"]:::entity
-            InitStepStd["초임호봉기준\nprops: 초임호봉번호"]:::entity
+            PayStep["호봉\nprops: 호봉번호, 금액"]:::entity
+            InitStepStd["초임호봉기준"]:::entity
             PosPayStd["직책급기준\nprops: 직책급액"]:::entity
-            BonusStd["상여금기준\nprops: 상여금지급률, 연간지급률"]:::entity
+            BonusStd["상여금기준\nprops: 지급률"]:::entity
             SalDiffStd["연봉차등액기준\nprops: 차등액"]:::entity
-            SalCapStd["연봉상한액기준\nprops: 연봉상한액"]:::entity
-            OverseasStd["국외본봉기준\nprops: 국가명, 국외기본급액"]:::entity
+            SalCapStd["연봉상한액기준\nprops: 상한액"]:::entity
+            OverseasStd["국외본봉기준\nprops: 기본급액"]:::entity
         end
 
-        subgraph 단독_기준["단독 조회 기준표"]
+        subgraph 단독_기준["📌 단독 조회 기준표"]
             direction LR
             BasePay["보수기준\nprops: 보수기본급액"]:::entity
-            Allowance["수당\nprops: 수당액, 수당지급률"]:::entity
-            WagePeakStd["임금피크제기준\nprops: 적용연차, 임금피크지급률"]:::entity
-            StandaloneNote["이 3개는 별도 relation 없이\n속성 자체를 직접 조회하는 엔티티"]:::note
+            Allowance["수당\nprops: 수당액, 지급률"]:::entity
+            WagePeakStd["임금피크제기준\nprops: 연차, 지급률"]:::entity
+            StandaloneNote["별도 relation 없이\n속성 자체를 직접 조회"]:::note
 
-            BasePay --- StandaloneNote
-            Allowance --- StandaloneNote
-            WagePeakStd --- StandaloneNote
+            BasePay ~~~ StandaloneNote
+            Allowance ~~~ StandaloneNote
+            WagePeakStd ~~~ StandaloneNote
         end
     end
 
+    %% 그룹 간 흐름 정렬을 위한 안보이는 연결선
+    Legend ~~~ 규정_체계
     규정_체계 ~~~ 인사_체계
     인사_체계 ~~~ 기준_엔티티
 
-    subgraph 핵심_결정_관계["핵심 결정 관계"]
+    subgraph 핵심_결정_관계["⚙️ 4. 핵심 결정 관계 (N-ary Mappings)"]
         direction TB
-        Rel_PayStep{"호봉체계구성"}:::relation
-        Rel_InitStep{"초임호봉결정"}:::relation
-        Rel_PositionPay{"직책급결정"}:::relation
-        Rel_Bonus{"상여금결정"}:::relation
-        Rel_SalDiff{"연봉차등"}:::relation
-        Rel_SalCap{"연봉상한"}:::relation
-        Rel_Overseas{"국외본봉결정"}:::relation
+        Rel_PayStep{"호봉체계\n구성"}:::relation
+        Rel_InitStep{"초임호봉\n결정"}:::relation
+        Rel_PositionPay{"직책급\n결정"}:::relation
+        Rel_Bonus{"상여금\n결정"}:::relation
+        Rel_SalDiff{"연봉\n차등"}:::relation
+        Rel_SalCap{"연봉\n상한"}:::relation
+        Rel_Overseas{"국외본봉\n결정"}:::relation
     end
 
-    Rank -. 소속직급 .-> Rel_PayStep
-    PayStep -. 구성호봉 .-> Rel_PayStep
+    %% 관계 매핑 (가독성을 위한 선 최소화)
+    Rank ---> Rel_PayStep ---> PayStep
+    JobGroup ---> Rel_InitStep ---> InitStepStd
+    
+    Rank ---> Rel_PositionPay
+    Position ---> Rel_PositionPay ---> PosPayStd
 
-    JobGroup -. 대상직렬 .-> Rel_InitStep
-    InitStepStd -. 적용기준 .-> Rel_InitStep
+    Position ---> Rel_Bonus
+    Eval ---> Rel_Bonus ---> BonusStd
 
-    Rank -. 해당직급 .-> Rel_PositionPay
-    Position -. 해당직위 .-> Rel_PositionPay
-    PosPayStd -. 적용기준 .-> Rel_PositionPay
+    Rank ---> Rel_SalDiff
+    Eval ---> Rel_SalDiff ---> SalDiffStd
 
-    Position -. 해당직책구분 .-> Rel_Bonus
-    Eval -. 해당등급 .-> Rel_Bonus
-    BonusStd -. 적용기준 .-> Rel_Bonus
+    Rank ---> Rel_SalCap ---> SalCapStd
+    Rank ---> Rel_Overseas ---> OverseasStd
 
-    Rank -. 해당직급 .-> Rel_SalDiff
-    Eval -. 해당등급 .-> Rel_SalDiff
-    SalDiffStd -. 적용기준 .-> Rel_SalDiff
-
-    Rank -. 해당직급 .-> Rel_SalCap
-    SalCapStd -. 적용기준 .-> Rel_SalCap
-
-    Rank -. 해당직급 .-> Rel_Overseas
-    OverseasStd -. 적용기준 .-> Rel_Overseas
+    %% 🎨 서브그래프 스타일 직접 적용
+    style Legend fill:#FFFFFF,stroke:#E2E8F0,stroke-width:1px,rx:10,ry:10
+    style 규정_체계 fill:#FFFFFF,stroke:#CBD5E1,stroke-width:2px,rx:10,ry:10
+    style 인사_체계 fill:#F8FAFC,stroke:#93C5FD,stroke-width:2px,rx:10,ry:10
+    style 핵심_결정_관계 fill:#FFFBEB,stroke:#FDE68A,stroke-width:2px,rx:10,ry:10
+    style 기준_엔티티 fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,rx:10,ry:10
 ```
 
 ## 읽는 방법
