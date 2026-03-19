@@ -10,7 +10,6 @@ define
 # 분리된 실수형/정수형/날짜형 속성
 attribute 보수기본급액, value double;
 attribute 국외기본급액, value double;
-attribute 수당상한액, value double;
 attribute 연봉상한액, value double;
 attribute 직급서열, value integer;
 attribute 직위서열, value integer;
@@ -20,8 +19,6 @@ attribute 직책급적용시작일, value datetime;
 attribute 연봉차등적용시작일, value datetime;
 attribute 연봉상한적용시작일, value datetime;
 attribute 국외본봉적용시작일, value datetime;
-attribute 호봉적용종료일, value datetime;
-attribute 보수적용종료일, value datetime;
 attribute 직책급적용종료일, value datetime;
 attribute 상여금적용시작일, value datetime;
 attribute 상여금적용종료일, value datetime;
@@ -67,9 +64,7 @@ attribute 활성여부,       value boolean;
 attribute 규정번호,       value string;
 attribute 조번호,         value integer;
 attribute 항번호,         value integer;
-attribute 호번호,         value integer;
 attribute 조문내용,       value string;
-attribute 비고,           value string;
 
 # --- 직렬 관련 속성 (NEW) ---
 attribute 직렬코드,       value string;
@@ -95,7 +90,6 @@ attribute 수당유형,       value string;
 attribute 수당명,         value string;
 attribute 수당코드,       value string;
 attribute 지급조건,       value string;
-attribute 하한액,         value double;
 
 # --- 평가/승급 관련 속성 ---
 attribute 평가등급,       value string;
@@ -120,7 +114,6 @@ attribute 부칙조번호,     value integer;   # 부칙 내 조번호
 attribute 부칙항번호,     value integer;   # 부칙 내 항번호
 attribute 부칙내용,       value string;
 attribute 부칙시행일,     value datetime;
-attribute 부칙만료일,     value datetime;
 attribute 대체사유,       value string;
 attribute 대체시행일,     value datetime;
 attribute 대체만료일,     value datetime;
@@ -143,9 +136,7 @@ entity 규정,
 entity 조문,
     owns 조번호,
     owns 항번호,
-    owns 호번호,
     owns 조문내용,
-    owns 비고,
     plays 규정구성:하위조문,
     plays 규정_대체:피대체대상;
 
@@ -185,7 +176,6 @@ entity 호봉,
     owns 호봉번호,
     owns 호봉금액,
     owns 호봉적용시작일,
-    owns 호봉적용종료일,
     plays 호봉체계구성:구성호봉,
     plays 규정_대체:피대체대상;
 
@@ -194,7 +184,6 @@ entity 보수기준,
     owns 보수기준명,
     owns 보수기본급액,
     owns 보수적용시작일,
-    owns 보수적용종료일,
     owns 보수기준설명;
 
 entity 수당,
@@ -204,8 +193,6 @@ entity 수당,
     owns 수당액,
     owns 수당지급률,
     owns 지급조건,
-    owns 수당상한액,
-    owns 하한액,
     owns 수당설명;
 
 # --- 직책급 (NEW: 별표1-1) ---
@@ -351,7 +338,6 @@ entity 부칙,
     owns 부칙항번호,
     owns 부칙내용,
     owns 부칙시행일,
-    owns 부칙만료일,
     owns 우선순위,
     plays 규정_대체:대체규정,
     plays 규정구성:하위조문;

@@ -22,13 +22,15 @@ The graph has the following nodes and relationships:
 Nodes:
 - JobGrade {name: string}  // Example: '1급', '2급', '3급', '4급'
 - EvaluationGrade {name: string}  // Example: 'EX', 'EE', 'EI', 'MU'
+- BaseSalary {amount: integer, step: integer}  // step represents 호봉 (Pay Step)
 - SalaryLimit {amount: integer}
-- DutyAllowance {amount: integer, duty: string}  // Duty is the literal title, e.g., '팀장'
+- DutyAllowance {amount: integer, name: string}  // 'name' is the actual title, e.g., '팀장'
 - DifferentialAmount {amount: integer}
 
 Relationships:
+- (JobGrade)-[:HAS_BASE_SALARY]->(BaseSalary)
 - (JobGrade)-[:HAS_SALARY_LIMIT]->(SalaryLimit)
-- (JobGrade)-[:HAS_DUTY_ALLOWANCE]->(DutyAllowance)     // Filter DutyAllowance by duty property
+- (JobGrade)-[:HAS_DUTY_ALLOWANCE]->(DutyAllowance)     // Filter DutyAllowance by name property
 - (EvaluationGrade)-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: string}]->(DifferentialAmount) // The property for_grade holds the exact job grade name ('3급', etc.)
 
 Example Cypher for '단일 조회 — 연봉제 본봉 산정' (Finding Base Salary after applying differential amount for 3급 JobGrade and EX EvaluationGrade given a base of 60000000. DO NOT DO MATH IN CYPHER, RETURN RAW VALUES AND DO THE MATH IN YOUR OUTPUT):
@@ -37,7 +39,7 @@ RETURN d.amount as DifferentialAmount
 
 Example Cypher for '다중 관계 조인 — 직책급·차등액·상한액' (Finding Duty Allowance for '팀장', Differential Amount, and Salary Limit for a 3급 EX grade employee):
 MATCH (g:JobGrade {name: '3급'})
-MATCH (g)-[:HAS_DUTY_ALLOWANCE]->(da:DutyAllowance {duty: '팀장'})
+MATCH (g)-[:HAS_DUTY_ALLOWANCE]->(da:DutyAllowance {name: '팀장'})
 MATCH (g)-[:HAS_SALARY_LIMIT]->(lim:SalaryLimit)
 MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(diff:DifferentialAmount)
 RETURN da.amount as DutyAllowance, diff.amount as DifferentialAmount, lim.amount as SalaryLimit
@@ -174,8 +176,10 @@ def run_query(question: str):
             
             if "Error" in tool_result or "returned no results" in tool_result:
                 result_summary = tool_result
+                obs_content = f"Observation (조회 실패):\n{tool_result}\n\n[비판적 회고 규칙]\n위 쿼리가 왜 실패했거나 결과가 없는지 짧게 원인을 스스로 분석하고, 다음 쿼리를 어떻게 수정할지 회고(Reflection) 한 후 즉시 새로운 JSON 도구를 호출하세요. 오직 수정된 쿼리만 시도하세요. 스키마에 존재하지 않는 속성이나 관계를 질의했을 수 있습니다."
             else:
                 result_summary = "조회 성공"
+                obs_content = f"Observation (데이터베이스 조회 결과):\n{tool_result}\n\n위 결과를 바탕으로 질문에 대한 최종 답변을 한국어로 작성하거나, 결과가 없거나 부족하다면 다른 조건으로 쿼리 작업을 재시도하세요."
                 
             trace_calls.append({
                 "module": "DB",
@@ -184,7 +188,6 @@ def run_query(question: str):
                 "result": result_summary
             })
             
-            obs_content = f"Observation (데이터베이스 조회 결과):\n{tool_result}\n\n위 결과를 바탕으로 질문에 대한 최종 답변을 한국어로 작성하거나, 결과가 없거나 부족하다면 다른 조건으로 쿼리 작업을 재시도하세요."
             messages.append(AIMessage(content=content_str))
             messages.append(HumanMessage(content=obs_content))
             continue
