@@ -7,8 +7,8 @@ import re
 import sys
 from typing import Any, Dict, List, Tuple
 
-from bok_compensation_typedb.llm import create_chat_model
-from bok_compensation_typedb.question_validation import extract_step_no, validate_question
+from src.bok_compensation_typedb.llm import create_chat_model
+from src.bok_compensation_typedb.question_validation import extract_step_no, validate_question
 
 
 CONTEXT_PATH = Path(__file__).with_name("regulation_context.md")

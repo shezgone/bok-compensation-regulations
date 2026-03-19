@@ -92,70 +92,86 @@ if "question_input" not in st.session_state:
 # 아키텍처별 실행 함수 (lazy import — 연결 실패 시 graceful)
 # ---------------------------------------------------------------------------
 
-def _run_typedb(question: str) -> str:
+def _run_typedb(question: str) -> dict:
     from bok_compensation_typedb.agent import run_query as typedb_run_query
 
-    ans = typedb_run_query(question)
+    res = typedb_run_query(question)
+    
+    if isinstance(res, dict) and "trace_logs" in res:
+        ans = res["answer"]
+        trace_calls = res["trace_logs"]
+    else:
+        ans = str(res)
+        trace_calls = [
+            {
+                "module": "bok_compensation_typedb.agent",
+                "function": "run_query",
+                "arguments": {"question": question},
+                "result": "최종 추론/계산 결과"
+            },
+            {
+                "module": "TypeDB",
+                "function": "execute_typeql",
+                "arguments": {"query": "match $pos isa 직위..."},
+                "result": "TypeDB 내부 연산을 마친 JSON 결과값"
+            },
+            {
+                "module": "bok_compensation_typedb.agent",
+                "function": "generate_answer",
+                "arguments": {"typeql_result": "데이터"},
+                "result": ans
+            }
+        ]
+
     return {
         "answer": ans,
         "trace": {
             "question": question,
             "mode": "TypeDB Agent",
             "query_language": "TypeQL",
-            "function_calls": [
-                {
-                    "module": "bok_compensation_typedb.agent",
-                    "function": "run_query",
-                    "arguments": {"question": question},
-                    "result": "최종 추론/계산 결과"
-                },
-                {
-                    "module": "TypeDB",
-                    "function": "execute_typeql",
-                    "arguments": {"query": "match $pos isa 직위..."},
-                    "result": "TypeDB 내부 연산을 마친 JSON 결과값"
-                },
-                {
-                    "module": "bok_compensation_typedb.agent",
-                    "function": "generate_answer",
-                    "arguments": {"typeql_result": "데이터"},
-                    "result": ans
-                }
-            ]
+            "function_calls": trace_calls
         }
     }
 
 
-def _run_neo4j(question: str) -> str:
+def _run_neo4j(question: str) -> dict:
     from bok_compensation_neo4j.agent import run_query as neo4j_run_query
 
-    ans = neo4j_run_query(question)
+    res = neo4j_run_query(question)
+    
+    if isinstance(res, dict) and "trace_logs" in res:
+        ans = res["answer"]
+        trace_calls = res["trace_logs"]
+    else:
+        ans = str(res)
+        trace_calls = [
+            {
+                "module": "bok_compensation_neo4j.agent",
+                "function": "run_query",
+                "arguments": {"question": question},
+                "result": "최종 추론/계산 결과"
+            },
+            {
+                "module": "Neo4j_DB",
+                "function": "execute_cypher",
+                "arguments": {"query": "MATCH ... b.amount * m.value AS RaiseAmount"},
+                "result": "Neo4j 내부 연산을 마친 JSON 결과값"
+            },
+            {
+                "module": "bok_compensation_neo4j.agent",
+                "function": "generate_answer",
+                "arguments": {"cypher_result": "데이터"},
+                "result": ans
+            }
+        ]
+
     return {
         "answer": ans,
         "trace": {
             "question": question,
             "mode": "Neo4j Agent",
             "query_language": "Cypher",
-            "function_calls": [
-                {
-                    "module": "bok_compensation_neo4j.agent",
-                    "function": "run_query",
-                    "arguments": {"question": question},
-                    "result": "최종 추론/계산 결과"
-                },
-                {
-                    "module": "Neo4j_DB",
-                    "function": "execute_cypher",
-                    "arguments": {"query": "MATCH ... b.amount * m.value AS RaiseAmount"},
-                    "result": "Neo4j 내부 연산을 마친 JSON 결과값"
-                },
-                {
-                    "module": "bok_compensation_neo4j.agent",
-                    "function": "generate_answer",
-                    "arguments": {"cypher_result": "데이터"},
-                    "result": ans
-                }
-            ]
+            "function_calls": trace_calls
         }
     }
 

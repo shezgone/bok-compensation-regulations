@@ -29,23 +29,23 @@ Nodes:
 Relationships:
 - (JobGrade)-[:HAS_SALARY_LIMIT]->(SalaryLimit)
 - (JobGrade)-[:HAS_DUTY_ALLOWANCE]->(DutyAllowance)     // Filter DutyAllowance by duty property
-- (JobGrade)-[:HAS_DIFFERENTIAL_AMOUNT {eval_grade: string}]->(DifferentialAmount) // The property eval_grade holds the exact grade name ('EX', etc.)
+- (EvaluationGrade)-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: string}]->(DifferentialAmount) // The property for_grade holds the exact job grade name ('3급', etc.)
 
 Example Cypher for '단일 조회 — 연봉제 본봉 산정' (Finding Base Salary after applying differential amount for 3급 JobGrade and EX EvaluationGrade given a base of 60000000. DO NOT DO MATH IN CYPHER, RETURN RAW VALUES AND DO THE MATH IN YOUR OUTPUT):
-MATCH (g:JobGrade {name: '3급'})-[:HAS_DIFFERENTIAL_AMOUNT {eval_grade: 'EX'}]->(d:DifferentialAmount)
+MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(d:DifferentialAmount)
 RETURN d.amount as DifferentialAmount
 
 Example Cypher for '다중 관계 조인 — 직책급·차등액·상한액' (Finding Duty Allowance for '팀장', Differential Amount, and Salary Limit for a 3급 EX grade employee):
 MATCH (g:JobGrade {name: '3급'})
 MATCH (g)-[:HAS_DUTY_ALLOWANCE]->(da:DutyAllowance {duty: '팀장'})
-MATCH (g)-[:HAS_DIFFERENTIAL_AMOUNT {eval_grade: 'EX'}]->(diff:DifferentialAmount)
 MATCH (g)-[:HAS_SALARY_LIMIT]->(lim:SalaryLimit)
+MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(diff:DifferentialAmount)
 RETURN da.amount as DutyAllowance, diff.amount as DifferentialAmount, lim.amount as SalaryLimit
 
 Example Cypher for '범위 필터 — 차등액 >= 200만원' (Listing all Job Grade and Evaluation Grade combinations where differential amount >= 2000000):
-MATCH (g:JobGrade)-[r:HAS_DIFFERENTIAL_AMOUNT]->(d:DifferentialAmount)
+MATCH (e:EvaluationGrade)-[r:HAS_DIFFERENTIAL_AMOUNT]->(d:DifferentialAmount)
 WHERE d.amount >= 2000000
-RETURN g.name as JobGrade, r.eval_grade as EvaluationGrade, d.amount as Amount
+RETURN r.for_grade as JobGrade, e.name as EvaluationGrade, d.amount as Amount
 ORDER BY JobGrade ASC, d.amount DESC
 
 Instructions:
@@ -53,6 +53,13 @@ Instructions:
 2. Ensure you understand exactly what the user is asking and write the correct Cypher logic to match. Do not guess schema.
 3. Your responses should format numbers cleanly (e.g. 63,024,000원) and explicitly mention steps.
 4. For single calculations, calculate it thoroughly (e.g. base + differential amount).
+5. IMPORTANT: You MUST output your final answer and all intermediate thoughts in native Korean (한국어).
+6. To use a tool, you must output ONLY a valid JSON block like:
+```json
+{"name": "execute_cypher", "arguments": {"query": "..."}}
+```
+Do not add natural language before or after the JSON block when calling a tool.
+
 """
 
 # Define the Tool function
@@ -61,14 +68,26 @@ def execute_cypher(query: str) -> str:
     """Executes a Cypher query against the Neo4j HR rules graph and returns the result."""
     try:
         driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        
+        def serialize_record(record):
+            res = {}
+            for k, v in record.items():
+                if hasattr(v, "labels") and hasattr(v, "items"): # Node
+                    res[k] = {"labels": list(v.labels), "properties": dict(v.items())}
+                elif hasattr(v, "type") and hasattr(v, "items"): # Relationship
+                    res[k] = {"type": v.type, "properties": dict(v.items())}
+                else:
+                    res[k] = v
+            return res
+
         with driver.session() as session:
             result = session.run(query)
-            records = [dict(record) for record in result]
+            records = [serialize_record(record) for record in result]
             driver.close()
             
             if not records:
                 return "Query executed successfully but returned no results."
-            return json.dumps(records, ensure_ascii=False)
+            return json.dumps(records, ensure_ascii=False, default=str)
     except Exception as e:
         return f"Error executing Cypher query: {str(e)}"
 
@@ -87,12 +106,105 @@ def build_neo4j_agent():
     return agent_executor
 
 def run_query(question: str):
-    agent_executor = build_neo4j_agent()
-    response = agent_executor.invoke({"messages": [HumanMessage(content=question)]})
-    return response["messages"][-1].content
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+    from src.bok_compensation_typedb.llm import create_chat_model
+    
+    llm = create_chat_model(temperature=0)
+    messages = [
+        SystemMessage(content=NEO4J_SCHEMA_INFO),
+        HumanMessage(content=question)
+    ]
+    
+    trace_calls = []
+    trace_calls.append({
+        "module": "Graph RAG",
+        "function": "ReAct_Loop_Start",
+        "arguments": {"question": question},
+        "result": "검색 루프 시작"
+    })
+    
+    for step in range(1, 10):
+        try:
+            response = llm.invoke(messages)
+        except Exception as e:
+            trace_calls.append({
+                "module": "Agent",
+                "function": "LLM_Invoke",
+                "arguments": {"step": step},
+                "result": f"에러 발생: {e}"
+            })
+            return {"answer": "LLM 호출 중 에러가 발생했습니다.", "trace_logs": trace_calls}
+            
+        messages.append(response)
+        content_str = response.content.strip()
+        
+        parsed = None
+        try:
+            import json
+            import re
+            
+            json_str = content_str
+            match_md = re.search(r"```(?:json)?\s*(.*?)(?:```|$)", content_str, re.DOTALL)
+            if match_md:
+                json_str = match_md.group(1).strip()
+            else:
+                json_str = content_str.strip()
+                
+            if not json_str.startswith('{'):
+                start_idx = content_str.find('{')
+                end_idx = content_str.rfind('}')
+                if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
+                    json_str = content_str[start_idx:end_idx+1]
+                    
+            parsed = json.loads(json_str)
+        except Exception:
+            pass
+            
+        if isinstance(parsed, dict) and "name" in parsed and parsed.get("name") == "execute_cypher":
+            query = parsed.get("arguments", {}).get("query", "")
+            
+            trace_calls.append({
+                "module": "Agent",
+                "function": "Action_Generated",
+                "arguments": {"step": step, "target_tool": "execute_cypher"},
+                "result": query
+            })
+            
+            tool_result = execute_cypher.invoke({"query": query})
+            
+            if "Error" in tool_result or "returned no results" in tool_result:
+                result_summary = tool_result
+            else:
+                result_summary = "조회 성공"
+                
+            trace_calls.append({
+                "module": "DB",
+                "function": "execute_cypher",
+                "arguments": {"step": step},
+                "result": result_summary
+            })
+            
+            obs_content = f"Observation (데이터베이스 조회 결과):\n{tool_result}\n\n위 결과를 바탕으로 질문에 대한 최종 답변을 한국어로 작성하거나, 결과가 없거나 부족하다면 다른 조건으로 쿼리 작업을 재시도하세요."
+            messages.append(AIMessage(content=content_str))
+            messages.append(HumanMessage(content=obs_content))
+            continue
+            
+        # JSON 포맷의 Action이 아니면 최종 답변으로 간주
+        if isinstance(parsed, dict) and "name" in parsed and parsed.get("name") == "execute_cypher":
+            continue
 
-if __name__ == "__main__":
-    test_question = "3급 팀장이며 성과평가 EX 등급인 직원의 직책급, 연봉차등액, 연봉상한액을 모두 조회하시오."
-    print(f"Question: {test_question}")
-    answer = run_query(test_question)
-    print(f"Answer: {answer}")
+        trace_calls.append({
+            "module": "Agent",
+            "function": "End_Loop",
+            "arguments": {"reason": "final_answer_generated", "step": step},
+            "result": "최종 답변 도출 완료"
+        })
+        return {"answer": content_str, "trace_logs": trace_calls}
+        
+    trace_calls.append({
+        "module": "Agent",
+        "function": "Timeout",
+        "arguments": {"reason": "max_steps"},
+        "result": "최대 반복 횟수 초과"
+    })
+    return {"answer": "데이터를 찾기 위한 탐색 횟수를 초과하여 최종 답변을 생성하지 못했습니다.", "trace_logs": trace_calls}

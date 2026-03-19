@@ -7,8 +7,8 @@ from typing import Any, List
 DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b-instruct"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
-DEFAULT_OPENAI_MODEL = "your-model-name"
-DEFAULT_OPENAI_BASE_URL = "http://localhost:8000/v1"
+DEFAULT_OPENAI_MODEL = "Qwen3-Coder-30B-A3B-Instruct"
+DEFAULT_OPENAI_BASE_URL = "https://namc-aigw.io.naver.com"
 DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
@@ -40,15 +40,14 @@ def create_chat_model(*, temperature: float = 0.0, json_output: bool = False) ->
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
-
-        kwargs = {
-            "model": model_name,
-            "base_url": os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL),
-            "temperature": temperature,
-        }
+        model = ChatOllama(
+            model=model_name,
+            base_url=os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL),
+            temperature=temperature,
+        )
         if json_output:
-            kwargs["format"] = "json"
-        return ChatOllama(**kwargs)
+            return model.bind(format="json")
+        return model
 
     if provider == "openai-compatible":
         from langchain_openai import ChatOpenAI
@@ -56,8 +55,9 @@ def create_chat_model(*, temperature: float = 0.0, json_output: bool = False) ->
         model = ChatOpenAI(
             model=model_name,
             base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
-            api_key=os.getenv("OPENAI_API_KEY", "unused"),
+            api_key=os.getenv("OPENAI_API_KEY", "sk-nb80zkJD77ER-m95guV0Cw"),
             temperature=temperature,
+            max_tokens=2048,
         )
         if json_output:
             return model.bind(response_format={"type": "json_object"})
@@ -84,7 +84,7 @@ def create_embedding_model() -> Any:
         return OpenAIEmbeddings(
             model=model_name,
             base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
-            api_key=os.getenv("OPENAI_API_KEY", "unused"),
+            api_key=os.getenv("OPENAI_API_KEY", "sk-nb80zkJD77ER-m95guV0Cw"),
         )
 
     raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
