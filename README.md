@@ -95,10 +95,10 @@ flowchart TD
     Eval --> Rel_SalDiff --> SalDiffStd
 
     %% 🎨 서브그래프 스타일 직접 적용 (둥근 테두리 및 배경색)
-    style Cluster_Rule fill:#FFFFFF,stroke:#CBD5E1,stroke-width:2px,rx:10,ry:10
-    style Cluster_HR fill:#F8FAFC,stroke:#93C5FD,stroke-width:2px,rx:10,ry:10
-    style Cluster_Rel fill:#FFFBEB,stroke:#FDE68A,stroke-width:2px,rx:10,ry:10
-    style Cluster_Std fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,rx:10,ry:10
+    style Cluster_Rule fill:#e2e8f0,stroke:#64748b,stroke-width:2px,rx:10,ry:10
+    style Cluster_HR fill:#bfdbfe,stroke:#3b82f6,stroke-width:2px,rx:10,ry:10
+    style Cluster_Rel fill:#fef08a,stroke:#eab308,stroke-width:2px,rx:10,ry:10
+    style Cluster_Std fill:#bbf7d0,stroke:#22c55e,stroke-width:2px,rx:10,ry:10
 ```
 > 상세한 스키마 다이어그램, 엔티티 설명 및 에이전트의 실제 질의 파싱 경로(Query Path) 예시는 **[docs/schema_diagram.md](docs/schema_diagram.md)** 문서에서 확인하실 수 있습니다.
 

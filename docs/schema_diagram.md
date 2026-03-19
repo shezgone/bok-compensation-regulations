@@ -108,11 +108,11 @@ flowchart TD
     Rank --> Rel_Overseas --> OverseasStd
 
     %% 🎨 서브그래프 스타일 직접 적용
-    style Legend fill:#FFFFFF,stroke:#E2E8F0,stroke-width:1px,rx:10,ry:10
-    style 규정_체계 fill:#FFFFFF,stroke:#CBD5E1,stroke-width:2px,rx:10,ry:10
-    style 인사_체계 fill:#F8FAFC,stroke:#93C5FD,stroke-width:2px,rx:10,ry:10
-    style 핵심_결정_관계 fill:#FFFBEB,stroke:#FDE68A,stroke-width:2px,rx:10,ry:10
-    style 기준_엔티티 fill:#F0FDF4,stroke:#BBF7D0,stroke-width:2px,rx:10,ry:10
+    style Legend fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,rx:10,ry:10
+    style 규정_체계 fill:#e2e8f0,stroke:#64748b,stroke-width:2px,rx:10,ry:10
+    style 인사_체계 fill:#bfdbfe,stroke:#3b82f6,stroke-width:2px,rx:10,ry:10
+    style 핵심_결정_관계 fill:#fef08a,stroke:#eab308,stroke-width:2px,rx:10,ry:10
+    style 기준_엔티티 fill:#bbf7d0,stroke:#22c55e,stroke-width:2px,rx:10,ry:10
 ```
 
 ## 읽는 방법
