@@ -3,6 +3,66 @@
 ## 1. 프로젝트 개요 (Overview)
 본 프로젝트는 한국은행 임직원의 보수 및 인사 규정과 같이 **복잡한 사규와 수치 계산이 혼재된 도메인**에서 완벽한 질의응답을 제공하는 대화형 AI 도우미를 구축하는 것을 목표로 합니다. 단순한 텍스트 검색(RAG)의 한계를 극복하기 위해 **지식 그래프(Knowledge Graph)** 와 **ReAct(Reasoning and Acting) 기반의 LangGraph 자율 에이전트**를 결합한 최신 AI 아키텍처를 도입하여 테스트 프레임워크를 수립하고 성능을 검증했습니다.
 
+### 1.1. 원천 규정 데이터
+본 시스템의 지식 그래프 및 RAG 구축을 위해 사용된 원천 데이터(Source Document)는 다음과 같습니다.
+* **원천 문서 링크**: [한국은행 보수규정 전문(20250213)](docs/보수규정%20전문(20250213).pdf)
+
+### 1.2. TypeDB 지식 그래프 스키마(Schema) 설계 리뷰
+복잡한 한국은행의 규정 체계와 인사/보수 기준표를 AI가 오차 없이 추론할 수 있도록 N-ary 기반의 하이퍼그래프(TypeDB)로 모델링했습니다. 이를 통해 *'규정-조문'*의 법문 구조, *'직렬-직급-직위'*의 인사 체계, 그리고 이들의 교차로 결정되는 *'수당/호봉/상여금'* 기준표가 유기적으로 연결됩니다.
+
+```mermaid
+flowchart TD
+    classDef entity fill:#1a365d,stroke:#63b3ed,stroke-width:2px,color:#ffffff;
+    classDef relation fill:#7b341e,stroke:#fbd38d,stroke-width:2px,color:#ffffff,shape:diamond;
+
+    subgraph 규정_체계["1. 규정 체계 (텍스트/규정)"]
+        direction LR
+        Regulation["규정"]:::entity
+        Rel_Comp{"규정구성"}:::relation
+        Article["조문"]:::entity
+        Regulation -->|상위규정| Rel_Comp -->|하위조문| Article
+    end
+
+    subgraph 인사_체계["2. 인사 체계 (분류 기준 축)"]
+        direction LR
+        JobGroup["직렬"]:::entity
+        Rank["직급"]:::entity
+        Position["직위"]:::entity
+        Eval["평가결과"]:::entity
+    end
+
+    subgraph 기준_엔티티["3. 보수 기준표 (금액/비율 엔티티)"]
+        direction LR
+        PayStep["호봉"]:::entity
+        PosPayStd["직책급기준"]:::entity
+        BonusStd["상여금기준"]:::entity
+        SalDiffStd["연봉차등액기준"]:::entity
+    end
+
+    규정_체계 ~~~ 인사_체계
+    인사_체계 ~~~ 기준_엔티티
+
+    subgraph 핵심_결정_관계["4. N-ary 관계 (다차원 교차 맵핑)"]
+        direction TB
+        Rel_PayStep{"호봉체계구성"}:::relation
+        Rel_PositionPay{"직책급결정"}:::relation
+        Rel_Bonus{"상여금결정"}:::relation
+        Rel_SalDiff{"연봉차등"}:::relation
+    end
+
+    Rank -. 공통축 .-> Rel_PayStep
+    PayStep -. 결정 .-> Rel_PayStep
+
+    Rank -. 공통축 .-> Rel_PositionPay
+    Position -. 상위조건 .-> Rel_PositionPay
+    PosPayStd -. 결정 .-> Rel_PositionPay
+
+    Position -. 공통축 .-> Rel_Bonus
+    Eval -. 조건 .-> Rel_Bonus
+    BonusStd -. 결정 .-> Rel_Bonus
+```
+> 상세한 스키마 다이어그램, 엔티티 설명 및 에이전트의 실제 질의 파싱 경로(Query Path) 예시는 **[docs/schema_diagram.md](docs/schema_diagram.md)** 문서에서 확인하실 수 있습니다.
+
 ---
 
 ## 2. 도입 기술 및 핵심 아키텍처
