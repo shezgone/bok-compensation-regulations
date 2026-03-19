@@ -34,10 +34,10 @@ flowchart TD
         Rel_Override{"규정_대체\n(Override)"}:::relation
         Rel_Rev{"개정\n관계"}:::relation
 
-        Regulation ===>|상위| Rel_Comp ===>|하위| Article
-        Regulation --->|개정 대상| Rel_Rev --->|이력 기록| History
-        Article -. 구 규정 .-x Rel_Override
-        Addendum === 신 규정 ===> Rel_Override
+        Regulation ==>|상위| Rel_Comp ==>|하위| Article
+        Regulation -->|개정 대상| Rel_Rev -->|이력 기록| History
+        Article -.->|구 규정| Rel_Override
+        Addendum ==>|신 규정| Rel_Override
     end
 
     %% 👤 2. 인사 체계
@@ -79,20 +79,20 @@ flowchart TD
     Cluster_Rel ~~~ Cluster_Std
 
     %% 매핑 선: 인사체계 -> 관계 -> 산출기준
-    JobGroup ---> Rel_InitStep ---> InitStep
-    Rank ---> Rel_PayStep ---> PayStep
+    JobGroup --> Rel_InitStep --> InitStep
+    Rank --> Rel_PayStep --> PayStep
     
-    Rank ---> Rel_PositionPay
-    Position ---> Rel_PositionPay ---> PosPayStd
+    Rank --> Rel_PositionPay
+    Position --> Rel_PositionPay --> PosPayStd
     
-    Rank ---> Rel_SalCap ---> SalCapStd
-    Rank ---> Rel_Overseas ---> OverseasStd
+    Rank --> Rel_SalCap --> SalCapStd
+    Rank --> Rel_Overseas --> OverseasStd
     
-    Position ---> Rel_Bonus
-    Eval ---> Rel_Bonus ---> BonusStd
+    Position --> Rel_Bonus
+    Eval --> Rel_Bonus --> BonusStd
     
-    Rank ---> Rel_SalDiff
-    Eval ---> Rel_SalDiff ---> SalDiffStd
+    Rank --> Rel_SalDiff
+    Eval --> Rel_SalDiff --> SalDiffStd
 
     %% 🎨 서브그래프 스타일 직접 적용 (둥근 테두리 및 배경색)
     style Cluster_Rule fill:#FFFFFF,stroke:#CBD5E1,stroke-width:2px,rx:10,ry:10

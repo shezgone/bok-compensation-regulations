@@ -31,10 +31,10 @@ flowchart TD
         History["⏳ 개정이력\n개정일\nprops: 이력설명"]:::doc
         Rel_Override{"규정_대체\n(Override)"}:::relation
 
-        Regulation ===>|상위규정| Rel_Comp ===>|하위조문| Article
-        Regulation --->|대상규정| Rel_Rev --->|이력| History
-        Article -. 구 규정 .-x Rel_Override
-        Addendum === 신 규정 ===> Rel_Override
+        Regulation ==>|상위규정| Rel_Comp ==>|하위조문| Article
+        Regulation -->|대상규정| Rel_Rev -->|이력| History
+        Article -.->|구 규정| Rel_Override
+        Addendum ==>|신 규정| Rel_Override
     end
 
     subgraph 인사_체계["👤 2. 인사 체계 (HR Axis)"]
@@ -45,7 +45,7 @@ flowchart TD
         Position["🎯 직위\nkey: 직위코드"]:::entity
         Eval["📈 평가결과\nkey: 평가등급"]:::entity
 
-        JobGroup --->|분류직렬| Rel_Class --->|분류직급| Rank
+        JobGroup -->|분류직렬| Rel_Class -->|분류직급| Rank
     end
 
     subgraph 기준_엔티티["💰 3. 보수 기준 엔티티 (Compensation Standards)"]
@@ -92,20 +92,20 @@ flowchart TD
     end
 
     %% 관계 매핑 (가독성을 위한 선 최소화)
-    Rank ---> Rel_PayStep ---> PayStep
-    JobGroup ---> Rel_InitStep ---> InitStepStd
+    Rank --> Rel_PayStep --> PayStep
+    JobGroup --> Rel_InitStep --> InitStepStd
     
-    Rank ---> Rel_PositionPay
-    Position ---> Rel_PositionPay ---> PosPayStd
+    Rank --> Rel_PositionPay
+    Position --> Rel_PositionPay --> PosPayStd
 
-    Position ---> Rel_Bonus
-    Eval ---> Rel_Bonus ---> BonusStd
+    Position --> Rel_Bonus
+    Eval --> Rel_Bonus --> BonusStd
 
-    Rank ---> Rel_SalDiff
-    Eval ---> Rel_SalDiff ---> SalDiffStd
+    Rank --> Rel_SalDiff
+    Eval --> Rel_SalDiff --> SalDiffStd
 
-    Rank ---> Rel_SalCap ---> SalCapStd
-    Rank ---> Rel_Overseas ---> OverseasStd
+    Rank --> Rel_SalCap --> SalCapStd
+    Rank --> Rel_Overseas --> OverseasStd
 
     %% 🎨 서브그래프 스타일 직접 적용
     style Legend fill:#FFFFFF,stroke:#E2E8F0,stroke-width:1px,rx:10,ry:10
