@@ -24,11 +24,15 @@ flowchart TD
         Regulation["규정\nkey: 규정번호\nprops: 규정명, 시행일"]:::entity
         Rel_Comp{"규정구성"}:::relation
         Article["조문\n조번호/항번호/호번호\nprops: 조문내용"]:::entity
+        Addendum["부칙\nprops: 부칙내용"]:::entity
         Rel_Rev{"규정개정"}:::relation
         History["개정이력\n개정일\nprops: 개정이력설명"]:::entity
+        Rel_Override{"규정_대체\n(Override)"}:::relation
 
         Regulation -->|상위규정| Rel_Comp -->|하위조문| Article
         Regulation -->|대상규정| Rel_Rev -->|이력| History
+        Article -. 구 규정 .-> Rel_Override
+        Addendum -. 신 규정 .-> Rel_Override
     end
 
     subgraph 인사_체계["인사 체계"]
@@ -121,6 +125,7 @@ flowchart TD
 |------|--------|-----------|-------------|
 | 규정 체계 | 규정 | `규정번호`, `규정명`, `시행일` | 전체 문서의 루트입니다. |
 | 규정 체계 | 조문 | `조번호`, `항번호`, `호번호`, `조문내용` | 규정 해석 질의의 컨텍스트 원문입니다. |
+| 규정 체계 | 부칙 | `부칙내용` | 경과조치 등 예외 사항이며 `규정_대체`를 통해 조문을 오버라이드합니다. |
 | 인사 체계 | 직렬 | `직렬코드`, `직렬명` | 초임호봉 결정의 출발 축입니다. |
 | 인사 체계 | 직급 | `직급코드`, `직급명`, `직급서열` | 본봉, 직책급, 연봉차등, 상한, 국외본봉의 공통 축입니다. |
 | 인사 체계 | 직위 | `직위코드`, `직위명`, `직위서열` | 직책급, 상여금의 공통 축입니다. |
