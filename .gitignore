@@ -219,3 +219,7 @@ test_override.py
 test_vllm.py
 vllm_proxy.py
 docs/flowise_vllm_proxy_tips.md
+
+# Ignore LLM configurations
+llm.py
+src/bok_compensation_typedb/llm.py

@@ -4,11 +4,11 @@ import os
 from typing import Any, List
 
 
-DEFAULT_OLLAMA_MODEL = "qwen2.5-coder:14b-instruct"
+DEFAULT_OLLAMA_MODEL = "your-ollama-model-name"
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
-DEFAULT_OPENAI_MODEL = "Qwen3-Coder-30B-A3B-Instruct"
-DEFAULT_OPENAI_BASE_URL = "https://namc-aigw.io.naver.com"
+DEFAULT_OLLAMA_EMBEDDING_MODEL = "your-ollama-embedding-model"
+DEFAULT_OPENAI_MODEL = "your-openai-model-name"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
@@ -55,7 +55,7 @@ def create_chat_model(*, temperature: float = 0.0, json_output: bool = False) ->
         model = ChatOpenAI(
             model=model_name,
             base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
-            api_key=os.getenv("OPENAI_API_KEY", "sk-nb80zkJD77ER-m95guV0Cw"),
+            api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
             temperature=temperature,
             max_tokens=2048,
         )
@@ -84,7 +84,7 @@ def create_embedding_model() -> Any:
         return OpenAIEmbeddings(
             model=model_name,
             base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
-            api_key=os.getenv("OPENAI_API_KEY", "sk-nb80zkJD77ER-m95guV0Cw"),
+            api_key=os.getenv("OPENAI_API_KEY", "your-api-key-here"),
         )
 
     raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
