@@ -72,6 +72,8 @@ def _render_execution_chain(trace: dict) -> None:
             if not query_str:  # 이미 인자에 query_str이 있다면 덮어쓰지 않음
                 query_str = sub_query
 
+        summary = _get_role_summary(func, mod)
+        
         st.markdown(f"**Step {i+1}: `{mod}.{func}()`**")
         st.caption(f"💡 **역할**: {summary}")
         
