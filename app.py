@@ -56,21 +56,34 @@ def _render_execution_chain(trace: dict) -> None:
         args = call.get("arguments", {})
         result = call.get("result", "완료")
         
-        args_str = str(args)[:200] + ("..." if len(str(args)) > 200 else "")
-        res_str = str(result)[:200] + ("..." if len(str(result)) > 200 else "")
+        args_dict = dict(args) if isinstance(args, dict) else args
+        query_str = None
+        if isinstance(args_dict, dict) and "query" in args_dict:
+            query_str = args_dict.pop("query")
+            
+        args_str = str(args_dict)[:500] + ("..." if len(str(args_dict)) > 500 else "")
+        res_str = str(result)[:500] + ("..." if len(str(result)) > 500 else "")
         
-        summary = _get_role_summary(func, mod)
-        
+        # Qwen(Sub-Agent)이 반환한 텍스트 안에 쿼리가 포함되어 있다면 파싱해서 보여줌
+        if "[내부 쿼리 실행 내역]" in res_str and "Sub-Query:" in res_str:
+            parts = res_str.split("[내부 쿼리 실행 내역]")
+            res_str = parts[0].strip()
+            sub_query = parts[1].replace("Sub-Query:", "").strip()
+            if not query_str:  # 이미 인자에 query_str이 있다면 덮어쓰지 않음
+                query_str = sub_query
+
         st.markdown(f"**Step {i+1}: `{mod}.{func}()`**")
         st.caption(f"💡 **역할**: {summary}")
         
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.markdown("*입력 (Input)*")
-            st.code(args_str, language="json")
-        with col2:
-            st.markdown("*출력 (Output)*")
-            st.code(res_str, language="json")
+        st.markdown("*입력 (Input)*")
+        st.code(args_str, language="json")
+        
+        if query_str:
+            st.markdown("*쿼리 (Query)*")
+            st.code(str(query_str), language="sql")
+            
+        st.markdown("*출력 (Output)*")
+        st.code(res_str, language="json")
         
         if i < len(calls) - 1:
             st.markdown("<div style='text-align: center; color: #888;'>⬇️ 전달</div>", unsafe_allow_html=True)

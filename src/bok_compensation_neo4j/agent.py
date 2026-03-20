@@ -82,7 +82,19 @@ def ask_db_expert(question: str) -> str:
     qwen_llm = create_chat_model(temperature=0)
     qwen_agent = create_react_agent(qwen_llm, [execute_cypher], prompt=QWEN_SCHEMA_PROMPT)
     res = qwen_agent.invoke({"messages": [HumanMessage(content=question)]})
-    return res["messages"][-1].content
+    
+    # 하위 에이전트의 도구 호출(Cypher) 내역을 텍스트로 함께 반환
+    query_traces = []
+    for msg in res["messages"]:
+        if getattr(msg, "tool_calls", None):
+            for tcall in msg.tool_calls:
+                if tcall.get("name") == "execute_cypher":
+                    query_traces.append(f"Sub-Query: {tcall.get('args', {}).get('query', '')}")
+                    
+    ans = res["messages"][-1].content
+    if query_traces:
+        return f"{ans}\n\n[내부 쿼리 실행 내역]\n" + "\n".join(query_traces)
+    return ans
 
 @tool
 def search_regulations(keyword: str) -> str:
