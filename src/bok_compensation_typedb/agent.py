@@ -151,7 +151,7 @@ def run_query(question: str):
                     })
             elif getattr(msg, "type", "") == "tool":
                 snippet = str(msg.content)
-                if len(snippet) > 80: snippet = snippet[:80] + "..."
+                if len(snippet) > 500: snippet = snippet[:500] + "..."
                 trace_calls.append({
                     "module": "Tool Response",
                     "function": msg.name,
