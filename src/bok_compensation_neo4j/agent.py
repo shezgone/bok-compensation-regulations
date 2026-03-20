@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Sequence, Any
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langgraph.prebuilt import create_react_agent
@@ -10,204 +10,129 @@ from neo4j import GraphDatabase
 
 from src.bok_compensation_neo4j.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Schema definition to instruct the LLM
-NEO4J_SCHEMA_INFO = """
-You have access to a Neo4j Graph Database that contains Bank of Korea compensation and HR rules.
-The graph has the following nodes and relationships:
+QWEN_SCHEMA_PROMPT = """당신은 한국은행 보수규정 전문 Neo4j Cypher 쿼리 에이전트(Qwen)입니다.
+Neo4j 데이터베이스에서 기준표(수치, 금액, 한도 등)를 조회하는 역할만 담당합니다.
+사용자의 질문(예: "3급 팀장 직책급액은?")을 분석하여 `execute_cypher` 도구를 호출하고 결과를 반환하세요.
 
+[Neo4j 스키마 지식]
 Nodes:
-- JobGrade {name: string}  // Example: '1급', '2급', '3급', '4급'
-- EvaluationGrade {name: string}  // Example: 'EX', 'EE', 'EI', 'MU'
-- BaseSalary {amount: integer, step: integer}  // step represents 호봉 (Pay Step)
+- JobGrade {name: string}
+- EvaluationGrade {name: string}
+- BaseSalary {amount: integer, step: integer}
 - SalaryLimit {amount: integer}
-- DutyAllowance {amount: integer, name: string}  // 'name' is the actual title, e.g., '팀장'
+- DutyAllowance {amount: integer, name: string}
 - DifferentialAmount {amount: integer}
 
 Relationships:
 - (JobGrade)-[:HAS_BASE_SALARY]->(BaseSalary)
 - (JobGrade)-[:HAS_SALARY_LIMIT]->(SalaryLimit)
-- (JobGrade)-[:HAS_DUTY_ALLOWANCE]->(DutyAllowance)     // Filter DutyAllowance by name property
-- (EvaluationGrade)-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: string}]->(DifferentialAmount) // The property for_grade holds the exact job grade name ('3급', etc.)
+- (JobGrade)-[:HAS_DUTY_ALLOWANCE]->(DutyAllowance)
+- (EvaluationGrade)-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: string}]->(DifferentialAmount)
 
-Example Cypher for '단일 조회 — 연봉제 본봉 산정' (Finding Base Salary after applying differential amount for 3급 JobGrade and EX EvaluationGrade given a base of 60000000. DO NOT DO MATH IN CYPHER, RETURN RAW VALUES AND DO THE MATH IN YOUR OUTPUT):
-MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(d:DifferentialAmount)
-RETURN d.amount as DifferentialAmount
-
-Example Cypher for '다중 관계 조인 — 직책급·차등액·상한액' (Finding Duty Allowance for '팀장', Differential Amount, and Salary Limit for a 3급 EX grade employee):
-MATCH (g:JobGrade {name: '3급'})
-MATCH (g)-[:HAS_DUTY_ALLOWANCE]->(da:DutyAllowance {name: '팀장'})
-MATCH (g)-[:HAS_SALARY_LIMIT]->(lim:SalaryLimit)
-MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(diff:DifferentialAmount)
-RETURN da.amount as DutyAllowance, diff.amount as DifferentialAmount, lim.amount as SalaryLimit
-
-Example Cypher for '범위 필터 — 차등액 >= 200만원' (Listing all Job Grade and Evaluation Grade combinations where differential amount >= 2000000):
-MATCH (e:EvaluationGrade)-[r:HAS_DIFFERENTIAL_AMOUNT]->(d:DifferentialAmount)
-WHERE d.amount >= 2000000
-RETURN r.for_grade as JobGrade, e.name as EvaluationGrade, d.amount as Amount
-ORDER BY JobGrade ASC, d.amount DESC
-
-Instructions:
-1. Always use the `execute_cypher` tool to fetch exact values before returning an answer. 
-2. Ensure you understand exactly what the user is asking and write the correct Cypher logic to match. Do not guess schema.
-3. Your responses should format numbers cleanly (e.g. 63,024,000원) and explicitly mention steps.
-4. For single calculations, calculate it thoroughly (e.g. base + differential amount).
-5. IMPORTANT: You MUST output your final answer and all intermediate thoughts in native Korean (한국어).
-6. To use a tool, you must output ONLY a valid JSON block like:
-```json
-{"name": "execute_cypher", "arguments": {"query": "..."}}
-```
-Do not add natural language before or after the JSON block when calling a tool.
-
+<정상 예시 모음>
+- 차등액 조회:
+  `MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(d:DifferentialAmount) RETURN d.amount as amount`
 """
 
-# Define the Tool function
+HCX_SYSTEM_PROMPT = """당신은 한국은행 보수규정 전문 [하이브리드 RAG 에이전트(Hybrid Reasoning Agent)] (HCX) 입니다.
+당신은 두 가지 강력한 도구를 적절히 분업하여 복합적인 계산과 논리적 추론을 수행해야 합니다.
+
+[사용 가능 도구 - 분업 체계]
+1. `ask_db_expert`: 기본급, 직책급, 연봉차등액, 연봉상한액, 호봉 등 수치 팩트가 필요할 때 데이터베이스 전문 하위 에이전트(Qwen)에게 자연어로 질문을 던져 수치를 가져옵니다.
+2. `search_regulations`: 수치가 아니라 "결근 감액 방식, 징계, 임금피크 지급률, 적용 기준일" 등 계산 공식과 텍스트 규정이 필요할 때 텍스트에서 검색합니다.
+
+[**필수 행동 지침 - 엄격히 준수할 것**]
+1. 수식을 모를 경우 절대 임의로 식을 만들어내지 말고 무조건 `search_regulations` 도구를 제일 먼저 호출하세요.
+2. 기준이 되는 기본 수치(예: XX급 직책급 등)가 필요하면 반드시 `ask_db_expert` 도구를 호출하여 정확한 숫자를 가져오세요.
+3. [초강력 경고] 연봉이나 총보수를 계산하라는 질문에 "기본급" 금액 정보가 없다면, 절대로 연봉이라고 답변하지 마세요. (계산 불가 명시)
+"""
+
 @tool
 def execute_cypher(query: str) -> str:
-    """Executes a Cypher query against the Neo4j HR rules graph and returns the result."""
+    """Neo4j Cypher 쿼리를 실행하여 결과를 반환합니다."""
     try:
         driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-        
         def serialize_record(record):
             res = {}
             for k, v in record.items():
-                if hasattr(v, "labels") and hasattr(v, "items"): # Node
+                if hasattr(v, "labels") and hasattr(v, "items"):
                     res[k] = {"labels": list(v.labels), "properties": dict(v.items())}
-                elif hasattr(v, "type") and hasattr(v, "items"): # Relationship
+                elif hasattr(v, "type") and hasattr(v, "items"):
                     res[k] = {"type": v.type, "properties": dict(v.items())}
-                else:
-                    res[k] = v
+                else: res[k] = v
             return res
 
         with driver.session() as session:
             result = session.run(query)
             records = [serialize_record(record) for record in result]
             driver.close()
-            
-            if not records:
-                return "Query executed successfully but returned no results."
+            if not records: return "Query executed successfully but returned no results."
             return json.dumps(records, ensure_ascii=False, default=str)
     except Exception as e:
+        logger.error(f"Cypher Error: {str(e)}\nQuery: {query}")
         return f"Error executing Cypher query: {str(e)}"
 
-from src.bok_compensation_typedb.llm import create_chat_model
+@tool
+def ask_db_expert(question: str) -> str:
+    """Neo4j 데이터베이스 조회가 필요할 때 사용하는 도구입니다. Cypher 전문가인 하위 에이전트(Qwen)에게 자연어로 질문합니다."""
+    from src.bok_compensation_typedb.llm import create_chat_model
+    qwen_llm = create_chat_model(temperature=0)
+    qwen_agent = create_react_agent(qwen_llm, [execute_cypher], prompt=QWEN_SCHEMA_PROMPT)
+    res = qwen_agent.invoke({"messages": [HumanMessage(content=question)]})
+    return res["messages"][-1].content
 
-# Setup Agent
-llm = create_chat_model(temperature=0)
+@tool
+def search_regulations(keyword: str) -> str:
+    """텍스트 문서에서 징계 감액률, 기준일 등 본문 문맥(Context)을 검색합니다."""
+    from src.bok_compensation_context.context_query import select_relevant_sections
+    try:
+        sections = select_relevant_sections(keyword, top_k=3)
+        if not sections: return "일치하는 본문 결과가 없습니다."
+        return "\n\n".join([sec["content"] for sec in sections])
+    except Exception as e: return f"Error: {str(e)}"
 
-def build_neo4j_agent():
-    tools = [execute_cypher]
-    agent_executor = create_react_agent(
-        llm, 
-        tools, 
-        prompt=NEO4J_SCHEMA_INFO
+def build_neo4j_agent() -> Any:
+    hcx_llm = ChatOpenAI(
+        base_url="http://211.188.81.250:30402/v1",
+        model="HCX-GOV-THINK-V1-32B",
+        api_key="sk-dummy",
+        temperature=0,
+        max_tokens=2048,
     )
-    return agent_executor
+    tools = [ask_db_expert, search_regulations]
+    return create_react_agent(hcx_llm, tools, prompt=HCX_SYSTEM_PROMPT)
 
 def run_query(question: str):
-    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-    from src.bok_compensation_typedb.llm import create_chat_model
+    agent = build_neo4j_agent()
+    trace_calls = [{"module": "System", "function": "Start", "arguments": {"mode": "LangGraph Hybrid Neo4j (HCX MoE)"}, "result": "검색 루프 시작"}]
     
-    llm = create_chat_model(temperature=0)
-    messages = [
-        SystemMessage(content=NEO4J_SCHEMA_INFO),
-        HumanMessage(content=question)
-    ]
-    
-    trace_calls = []
-    trace_calls.append({
-        "module": "Graph RAG",
-        "function": "ReAct_Loop_Start",
-        "arguments": {"question": question},
-        "result": "검색 루프 시작"
-    })
-    
-    for step in range(1, 10):
-        try:
-            response = llm.invoke(messages)
-        except Exception as e:
-            trace_calls.append({
-                "module": "Agent",
-                "function": "LLM_Invoke",
-                "arguments": {"step": step},
-                "result": f"에러 발생: {e}"
-            })
-            return {"answer": "LLM 호출 중 에러가 발생했습니다.", "trace_logs": trace_calls}
-            
-        messages.append(response)
-        content_str = response.content.strip()
+    try:
+        result = agent.invoke({"messages": [HumanMessage(content=question)]})
+        final_answer = result["messages"][-1].content
         
-        parsed = None
-        try:
-            import json
-            import re
-            
-            json_str = content_str
-            match_md = re.search(r"```(?:json)?\s*(.*?)(?:```|$)", content_str, re.DOTALL)
-            if match_md:
-                json_str = match_md.group(1).strip()
-            else:
-                json_str = content_str.strip()
-                
-            if not json_str.startswith('{'):
-                start_idx = content_str.find('{')
-                end_idx = content_str.rfind('}')
-                if start_idx != -1 and end_idx != -1 and end_idx >= start_idx:
-                    json_str = content_str[start_idx:end_idx+1]
-                    
-            parsed = json.loads(json_str)
-        except Exception:
-            pass
-            
-        if isinstance(parsed, dict) and "name" in parsed and parsed.get("name") == "execute_cypher":
-            query = parsed.get("arguments", {}).get("query", "")
-            
-            trace_calls.append({
-                "module": "Agent",
-                "function": "Action_Generated",
-                "arguments": {"step": step, "target_tool": "execute_cypher"},
-                "result": query
-            })
-            
-            tool_result = execute_cypher.invoke({"query": query})
-            
-            if "Error" in tool_result or "returned no results" in tool_result:
-                result_summary = tool_result
-                obs_content = f"Observation (조회 실패):\n{tool_result}\n\n[비판적 회고 규칙]\n위 쿼리가 왜 실패했거나 결과가 없는지 짧게 원인을 스스로 분석하고, 다음 쿼리를 어떻게 수정할지 회고(Reflection) 한 후 즉시 새로운 JSON 도구를 호출하세요. 오직 수정된 쿼리만 시도하세요. 스키마에 존재하지 않는 속성이나 관계를 질의했을 수 있습니다."
-            else:
-                result_summary = "조회 성공"
-                obs_content = f"Observation (데이터베이스 조회 결과):\n{tool_result}\n\n위 결과를 바탕으로 질문에 대한 최종 답변을 한국어로 작성하거나, 결과가 없거나 부족하다면 다른 조건으로 쿼리 작업을 재시도하세요."
-                
-            trace_calls.append({
-                "module": "DB",
-                "function": "execute_cypher",
-                "arguments": {"step": step},
-                "result": result_summary
-            })
-            
-            messages.append(AIMessage(content=content_str))
-            messages.append(HumanMessage(content=obs_content))
-            continue
-            
-        # JSON 포맷의 Action이 아니면 최종 답변으로 간주
-        if isinstance(parsed, dict) and "name" in parsed and parsed.get("name") == "execute_cypher":
-            continue
-
-        trace_calls.append({
-            "module": "Agent",
-            "function": "End_Loop",
-            "arguments": {"reason": "final_answer_generated", "step": step},
-            "result": "최종 답변 도출 완료"
-        })
-        return {"answer": content_str, "trace_logs": trace_calls}
-        
-    trace_calls.append({
-        "module": "Agent",
-        "function": "Timeout",
-        "arguments": {"reason": "max_steps"},
-        "result": "최대 반복 횟수 초과"
-    })
-    return {"answer": "데이터를 찾기 위한 탐색 횟수를 초과하여 최종 답변을 생성하지 못했습니다.", "trace_logs": trace_calls}
+        for msg in result["messages"]:
+            if getattr(msg, "tool_calls", None):
+                for tcall in msg.tool_calls:
+                    trace_calls.append({
+                        "module": "Agent",
+                        "function": f"Call_Tool_{tcall.get('name')}",
+                        "arguments": tcall.get("args"),
+                        "result": "요청중"
+                    })
+            elif getattr(msg, "type", "") == "tool":
+                snippet = str(msg.content)
+                if len(snippet) > 80: snippet = snippet[:80] + "..."
+                trace_calls.append({
+                    "module": "Tool Response",
+                    "function": msg.name,
+                    "arguments": {},
+                    "result": snippet
+                })
+        trace_calls.append({"module": "Agent", "function": "End", "arguments": {}, "result": "최종 답변 완료"})
+        return {"answer": final_answer, "trace_logs": trace_calls}
+    except Exception as e:
+        trace_calls.append({"module": "Agent", "function": "Error", "arguments": {"error": str(e)}, "result": "오류"})
+        return {"answer": f"시스템 오류 발생: {str(e)}", "trace_logs": trace_calls}

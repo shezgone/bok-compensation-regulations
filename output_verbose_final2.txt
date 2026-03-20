@@ -1,0 +1,25 @@
+/Users/user/bok-compensation-regulations/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+INFO:httpx:HTTP Request: POST https://namc-aigw.io.naver.com/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://namc-aigw.io.naver.com/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://namc-aigw.io.naver.com/chat/completions "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://namc-aigw.io.naver.com/chat/completions "HTTP/1.1 200 OK"
+Tool search_regulations returned:
+ ## 용어 정규화
+
+- G5 = 종합기획직원 5급 = 종합기획 5급
+- G3 = 종합기획직원 3급 = 종합기획 3급
+- 직급평점 = 성과평가 점...
+Tool execute_typeql returned:
+ [{"amt": 1956000.0, "g": "Entity(직급: 0x1e00040000000000000002)", "ref": "Entity(...
+Tool execute_typeql returned:
+ [{"amt": 0.0, "eval": "Entity(평가결과: 0x1e00100000000000000003)", "g": "Entity(직급:...
+
+Final: 평가고과가 7000점인 G3 팀장의 연봉을 산정하기 위해 다음과 같은 정보가 필요합니다:
+
+1. **현재 연봉제 본봉**: 질문에 주어지지 않았습니다.
+2. **직책급액**: 3급 팀장의 직책급액은 1,956,000원입니다.
+3. **연봉 차등액**: 평가등급이 BE인 3급 직원의 차등액은 0원입니다.
+
+현재 연봉제 본봉 금액이 주어지지 않았으므로, 조정 후 연봉제 본봉을 산출할 수 없습니다.  
+단, 질문하신 조건에 따른 연봉차등액은 0원, 직책급은 1,956,000원입니다.

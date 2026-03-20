@@ -165,7 +165,14 @@ def _invoke_2step_context_answer(question: str, selected_sections: List[Dict[str
     except ImportError:
         return "Error: LangChain core not installed", {"input": 0, "output": 0}, ""
 
-    model = create_chat_model(temperature=0.0)
+    from langchain_openai import ChatOpenAI
+    model = ChatOpenAI(
+        base_url="http://211.188.81.250:30402/v1",
+        model="HCX-GOV-THINK-V1-32B",
+        api_key="sk-dummy",
+        temperature=0,
+        max_tokens=2048,
+    )
     
     # 1단계: 추출 (Extraction)
     extraction_prompt = _compose_extraction_prompt(question, selected_sections)
