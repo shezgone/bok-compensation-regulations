@@ -11,7 +11,7 @@
 
 ### 📋 사전 준비 사항 (Prerequisites)
 - **Docker Desktop** (혹은 Rancher Desktop, OrbStack 등 Docker 호환 데몬)이 실행되어 있어야 합니다.
-- **Python 3.9+** 가 설치되어 있어야 합니다.
+- **Python 3.9+** 가 설치되어 있어야 합니다. *(맥에 설치되어 있지 않은 경우, 스크립트가 Homebrew 자동 설치를 시도합니다.)*
 
 ### ⚡ 단 한 줄로 모든 세팅 끝내기 (One-Click Setup)
 터미널을 열고, 프로젝트 폴더로 이동한 뒤 아래 쉘 스크립트를 실행해 주세요.
