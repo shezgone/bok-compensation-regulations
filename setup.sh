@@ -10,7 +10,23 @@ docker compose up -d
 echo "⏳ [2/4] 데이터베이스가 완전히 초기화될 때까지 15초간 대기합니다..."
 sleep 15
 
-echo "🐍 [3/4] 파이썬 가상환경(.venv) 설정 및 패키지를 설치합니다..."
+echo "🐍 [3/4] 파이썬 환경 및 가상환경(.venv) 설정 중..."
+
+# 파이썬 설치 여부 확인 및 자동 설치 시도 (Homebrew 활용)
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "⚠️  시스템에 python3가 설치되어 있지 않습니다."
+    
+    if command -v brew >/dev/null 2>&1; then
+        echo "🔄 Homebrew를 사용하여 python을 자동으로 설치합니다..."
+        brew install python
+    else
+        echo "❌ Homebrew가 설치되어 있지 않아 파이썬을 자동으로 설치할 수 없습니다."
+        echo "👉 Mac에 python3를 먼저 설치해 주세요! (https://www.python.org/downloads/mac-os/)"
+        echo "👉 또는 Homebrew 설치: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        exit 1
+    fi
+fi
+
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv
 fi
