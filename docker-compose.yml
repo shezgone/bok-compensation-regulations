@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  typedb:
+    image: typedb/typedb:latest
+    container_name: local-typedb
+    ports:
+      - "1729:1729"
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: local-neo4j
+    ports:
+      - "7474:7474" # Browser UI
+      - "7687:7687" # Bolt Protocol
+    environment:
+      - NEO4J_AUTH=none
+    restart: unless-stopped

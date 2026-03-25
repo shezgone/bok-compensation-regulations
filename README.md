@@ -5,6 +5,33 @@
 ![TypeDB](https://img.shields.io/badge/TypeDB-2B5CFF?style=for-the-badge&logo=typedb&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-121212?style=for-the-badge&logo=chainlink&logoColor=white)
 
+## 🚀 0. 고객 로컬 맥북 빠른 테스트 방법 (Quick Start)
+
+고객사(혹은 외부 시연용) 환경에서 가장 빠르고 간편하게 전체 시스템을 구동해볼 수 있도록 자동화 스크립트(`setup.sh`)가 준비되어 있습니다.
+
+### 📋 사전 준비 사항 (Prerequisites)
+- **Docker Desktop** (혹은 Rancher Desktop, OrbStack 등 Docker 호환 데몬)이 실행되어 있어야 합니다.
+- **Python 3.9+** 가 설치되어 있어야 합니다.
+
+### ⚡ 단 한 줄로 모든 세팅 끝내기 (One-Click Setup)
+터미널을 열고, 프로젝트 폴더로 이동한 뒤 아래 쉘 스크립트를 실행해 주세요.
+이 스크립트는 **① 데이터베이스 컨테이너 구동, ② 파이썬 가상환경 구성, ③ 지식 그래프 모델 생성 및 초기 데이터 주입**을 모두 한 번에 수행합니다.
+
+```bash
+chmod +x setup.sh  # (최초 1회 실행)
+./setup.sh
+```
+
+### 💻 웹 화면(Streamlit) 테스트 접속하기
+위 설치가 모두 무사히 끝나면, 제공된 가상환경을 활성화하고 웹 앱을 실행하면 됩니다.
+```bash
+source .venv/bin/activate
+streamlit run app.py
+```
+명령어를 입력하면 자동으로 `http://localhost:8501` 주소로 브라우저 창이 열리며, 한국은행 보수규정 챗봇 인터페이스를 바로 테스트 해보실 수 있습니다.
+
+
+---
 ## 📖 1. 프로젝트 개요 (Overview)
 본 프로젝트는 한국은행 임직원의 보수 및 인사 규정과 같이 **복잡한 사규와 수치 계산이 혼재된 도메인**에서 완벽한 질의응답을 제공하는 대화형 AI 도우미를 구축하는 것을 목표로 합니다. 단순한 텍스트 검색(RAG)의 한계를 극복하기 위해 **지식 그래프(Knowledge Graph)**와 **ReAct(Reasoning and Acting) 기반의 LangGraph 자율 에이전트**를 결합한 최신 AI 아키텍처를 도입하여 테스트 프레임워크를 수립하고 성능을 검증했습니다.
 
