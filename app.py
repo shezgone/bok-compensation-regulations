@@ -45,50 +45,60 @@ def _render_execution_chain(trace: dict) -> None:
     calls = trace.get("function_calls", [])
     if not calls:
         if trace.get("mode") == "direct_llm":
-            st.info("Chain: base_llm.invoke(질문) -> 모델 내재 지식 답변 : 사전학습 지식으로만 응답 생성")
+            st.markdown(
+                '<div class="chain-step" data-step="1">'
+                '<div class="step-title">base_llm.invoke(질문)</div>'
+                '<div class="step-role">사전학습 지식으로만 응답 생성</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
             return
-        st.write("실행 체인 정보가 없습니다.")
+        st.caption("실행 체인 정보가 없습니다.")
         return
-        
+
     for i, call in enumerate(calls):
         mod = call.get("module", "unknown").split("/")[-1].replace(".py", "")
         func = call.get("function", "unknown")
         args = call.get("arguments", {})
         result = call.get("result", "완료")
-        
+
         args_dict = dict(args) if isinstance(args, dict) else args
         query_str = None
         if isinstance(args_dict, dict) and "query" in args_dict:
             query_str = args_dict.pop("query")
-            
+
         args_str = str(args_dict)[:500] + ("..." if len(str(args_dict)) > 500 else "")
         res_str = str(result)[:500] + ("..." if len(str(result)) > 500 else "")
-        
+
         # Qwen(Sub-Agent)이 반환한 텍스트 안에 쿼리가 포함되어 있다면 파싱해서 보여줌
         if "[내부 쿼리 실행 내역]" in res_str and "Sub-Query:" in res_str:
             parts = res_str.split("[내부 쿼리 실행 내역]")
             res_str = parts[0].strip()
             sub_query = parts[1].replace("Sub-Query:", "").strip()
-            if not query_str:  # 이미 인자에 query_str이 있다면 덮어쓰지 않음
+            if not query_str:
                 query_str = sub_query
 
         summary = _get_role_summary(func, mod)
-        
-        st.markdown(f"**Step {i+1}: `{mod}.{func}()`**")
-        st.caption(f"💡 **역할**: {summary}")
-        
-        st.markdown("*입력 (Input)*")
-        st.code(args_str, language="json")
-        
-        if query_str:
-            st.markdown("*쿼리 (Query)*")
-            st.code(str(query_str), language="sql")
-            
-        st.markdown("*출력 (Output)*")
-        st.code(res_str, language="json")
-        
+
+        st.markdown(
+            f'<div class="chain-step" data-step="{i+1}">'
+            f'<div class="step-title">{mod}.{func}()</div>'
+            f'<div class="step-role">{summary}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        with st.expander(f"Step {i+1} 상세", expanded=False):
+            st.markdown("**입력 (Input)**")
+            st.code(args_str, language="json")
+            if query_str:
+                st.markdown("**쿼리 (Query)**")
+                st.code(str(query_str), language="sql")
+            st.markdown("**출력 (Output)**")
+            st.code(res_str, language="json")
+
         if i < len(calls) - 1:
-            st.markdown("<div style='text-align: center; color: #888;'>⬇️ 전달</div>", unsafe_allow_html=True)
+            st.markdown('<div class="chain-connector">↓</div>', unsafe_allow_html=True)
 
 
 st.set_page_config(
@@ -97,8 +107,207 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("🏛️ 한국은행 보수규정 — 4-Way 아키텍처 비교 데모")
-st.caption("TypeDB KG RAG · Neo4j Graph RAG · Context RAG · Base LLM")
+# ---------------------------------------------------------------------------
+# 커스텀 CSS
+# ---------------------------------------------------------------------------
+st.markdown("""
+<style>
+/* ── 전역 ── */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+html, body,
+.stMarkdown, .stText, .stCaption,
+p, h1, h2, h3, h4, h5, h6, li, td, th, label, span:not([class*="icon"]):not([data-testid]) {
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+code, pre {
+    font-family: 'JetBrains Mono', 'Menlo', monospace !important;
+}
+
+/* ── 헤더 ── */
+.main-header {
+    background: #363636;
+    border: 1px solid #444444;
+    color: #e2e8f0;
+    padding: 1.5rem 2rem;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+}
+.main-header h1 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #a5f3fc;
+    letter-spacing: -0.02em;
+}
+.main-header p {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.88rem;
+}
+
+/* ── 결과 카드: Streamlit native 사용, 색상 바만 HTML ── */
+.arch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+.arch-badge.typedb  { background: #1e3a5a; color: #93c5fd; }
+.arch-badge.neo4j   { background: #14532d; color: #86efac; }
+.arch-badge.context { background: #431407; color: #fdba74; }
+.arch-badge.basellm { background: #3b0764; color: #d8b4fe; }
+
+.arch-time {
+    font-size: 0.78rem;
+    color: #64748b;
+    background: #3a3a3a;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-weight: 500;
+    margin-left: 0.5rem;
+}
+
+/* ── 실행 체인 스텝 ── */
+.chain-step {
+    position: relative;
+    padding: 0.6rem 0.8rem 0.6rem 2.2rem;
+    margin: 0.4rem 0;
+    background: #363636;
+    border-radius: 8px;
+    border: 1px solid #444444;
+    font-size: 0.85rem;
+}
+.chain-step::before {
+    content: attr(data-step);
+    position: absolute;
+    left: 0.55rem;
+    top: 0.6rem;
+    width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 50%;
+    background: #7c3aed;
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.chain-step .step-title {
+    font-weight: 600;
+    color: #c084fc;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+}
+.chain-step .step-role {
+    font-size: 0.78rem;
+    color: #94a3b8;
+}
+.chain-connector {
+    text-align: center;
+    color: #475569;
+    font-size: 0.8rem;
+    margin: 0.1rem 0;
+}
+
+/* ── 사이드바 ── */
+section[data-testid="stSidebar"] {
+    background: #2b2b2b !important;
+}
+section[data-testid="stSidebar"] .stButton > button {
+    text-align: left !important;
+    justify-content: flex-start !important;
+    font-size: 0.82rem !important;
+    border: 1px solid #444444 !important;
+    border-radius: 8px !important;
+    padding: 0.45rem 0.7rem !important;
+    background: #333333 !important;
+    color: #cbd5e1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    transition: all 0.15s !important;
+}
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: #363636 !important;
+    border-color: #7c3aed !important;
+    color: #e2e8f0 !important;
+}
+
+/* ── 입력 영역 ── */
+.stTextArea textarea {
+    border-radius: 10px !important;
+    border: 1px solid #444444 !important;
+    background: #333333 !important;
+    color: #e2e8f0 !important;
+    padding: 0.8rem 1rem !important;
+    font-size: 0.92rem !important;
+}
+.stTextArea textarea:focus {
+    border-color: #7c3aed !important;
+    box-shadow: 0 0 0 2px rgba(124,58,237,0.2) !important;
+}
+
+/* ── 기대 정답 ── */
+.expected-answer {
+    background: #1a2e1a;
+    border: 1px solid #22c55e40;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    margin: 0.5rem 0 1rem 0;
+    font-size: 0.88rem;
+    color: #86efac;
+}
+.expected-answer strong {
+    color: #4ade80;
+}
+
+/* ── 에러 카드 ── */
+.error-card {
+    background: #2d1215;
+    border: 1px solid #991b1b40;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    color: #fca5a5;
+    font-size: 0.85rem;
+}
+
+/* ── 공통 안내 ── */
+.info-section {
+    background: #333333;
+    border: 1px solid #444444;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+}
+.info-section h4 {
+    margin: 0 0 0.5rem 0;
+    color: #a5f3fc;
+    font-size: 0.92rem;
+}
+
+/* ── divider ── */
+.result-divider {
+    border: none;
+    border-top: 1px solid #444444;
+    margin: 1.5rem 0 1.2rem 0;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ── 헤더 ──
+st.markdown("""
+<div class="main-header">
+    <h1>한국은행 보수규정 — 4-Way 아키텍처 비교 데모</h1>
+    <p>TypeDB KG RAG &middot; Neo4j Graph RAG &middot; Context RAG &middot; Base LLM</p>
+</div>
+""", unsafe_allow_html=True)
 
 if "question_input" not in st.session_state:
     st.session_state["question_input"] = ""
@@ -541,7 +750,7 @@ def _render_missing_input_tags(items: List[str]) -> None:
     if not items:
         return
     html = " ".join(
-        f"<span style='display:inline-block;margin:0 8px 8px 0;padding:0.28rem 0.7rem;border-radius:999px;background:#eef2ff;color:#1e3a8a;border:1px solid #c7d2fe;font-size:0.92rem;font-weight:600;'>{item}</span>"
+        f"<span style='display:inline-block;margin:0 8px 8px 0;padding:0.28rem 0.7rem;border-radius:999px;background:#363636;color:#c084fc;border:1px solid #7c3aed40;font-size:0.88rem;font-weight:600;'>{item}</span>"
         for item in items
     )
     st.markdown(html, unsafe_allow_html=True)
@@ -812,10 +1021,10 @@ def _render_trace(trace: dict) -> None:
 
 
 ARCHITECTURES = {
-    "TypeDB KG RAG": {"fn": _run_typedb, "icon": "🚀", "color": "#2196F3"},
-    "Neo4j Graph RAG": {"fn": _run_neo4j, "icon": "🕸️", "color": "#4CAF50"},
-    "Context RAG": {"fn": _run_context_rag, "icon": "📄", "color": "#FF9800"},
-    "Base LLM": {"fn": _run_base_llm, "icon": "🏛️", "color": "#9C27B0"},
+    "TypeDB KG RAG": {"fn": _run_typedb, "icon": "🚀", "color": "#1976d2", "css_class": "typedb"},
+    "Neo4j Graph RAG": {"fn": _run_neo4j, "icon": "🕸️", "color": "#2e7d32", "css_class": "neo4j"},
+    "Context RAG": {"fn": _run_context_rag, "icon": "📄", "color": "#ef6c00", "css_class": "context"},
+    "Base LLM": {"fn": _run_base_llm, "icon": "🏛️", "color": "#7b1fa2", "css_class": "basellm"},
 }
 
 
@@ -875,9 +1084,9 @@ EXAMPLE_QUESTIONS = [
 # 사이드바: 아키텍처 선택 & 예시 질문
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.header("⚙️ 설정")
+    st.markdown("### 설정")
 
-    st.subheader("아키텍처 선택")
+    st.markdown("**아키텍처 선택**")
     selected_archs = []
     for arch_name, arch_info in ARCHITECTURES.items():
         if st.checkbox(
@@ -888,13 +1097,19 @@ with st.sidebar:
             selected_archs.append(arch_name)
 
     st.divider()
-    st.subheader("📋 예시 질문")
+    st.markdown("**예시 질문**")
     for eq in EXAMPLE_QUESTIONS:
-        if st.button(f"[{eq['id']}] {eq['label']}", key=eq["id"], use_container_width=True):
+        if st.button(f"{eq['id']}. {eq['label']}", key=eq["id"], use_container_width=True):
             st.session_state["question_input"] = eq["question"]
 
     st.divider()
-    st.caption("한국은행 보수규정 Graph RAG PoC\n\nTypeDB 3.x · Neo4j 5.x · LangChain")
+    st.markdown(
+        '<div style="text-align:center; color:#475569; font-size:0.75rem; line-height:1.6;">'
+        'BOK Compensation Graph RAG PoC<br>'
+        'TypeDB 3.x &middot; Neo4j 5.x &middot; LangChain'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -913,7 +1128,10 @@ expected = next(
     "",
 )
 if expected:
-    st.info(f"📌 **기대 정답:** {expected}")
+    st.markdown(
+        f'<div class="expected-answer"><strong>기대 정답:</strong> {expected}</div>',
+        unsafe_allow_html=True,
+    )
 
 col_run, col_clear = st.columns([1, 5])
 with col_run:
@@ -974,39 +1192,50 @@ if st.session_state.get("results"):
     shared_validation_summaries, shared_missing_inputs = _collect_shared_validation_signals(results)
     shared_followups = _collect_shared_followup_questions(results)
 
-    st.divider()
-    st.subheader("📊 결과 비교")
+    st.markdown('<hr class="result-divider">', unsafe_allow_html=True)
+    st.markdown("#### 결과 비교")
 
     # 카드형 레이아웃
     cols = st.columns(len(results))
     for col, (arch_name, result) in zip(cols, results.items()):
         arch_info = ARCHITECTURES[arch_name]
+        css_class = arch_info.get("css_class", "")
         with col:
-            st.markdown(f"### {arch_info['icon']} {arch_name}")
-            st.caption(f"⏱️ {result['elapsed']:.1f}초")
+            # 배지 헤더
+            st.markdown(
+                f'<span class="arch-badge {css_class}">{arch_info["icon"]} {arch_name}</span>'
+                f'<span class="arch-time">{result["elapsed"]:.1f}s</span>',
+                unsafe_allow_html=True,
+            )
 
             if result["error"]:
-                st.error("실행 오류")
+                st.markdown(
+                    '<div class="error-card">실행 오류 발생</div>',
+                    unsafe_allow_html=True,
+                )
                 with st.expander("오류 상세"):
                     st.code(result["error"], language="text")
             else:
-                st.success("실행 완료")
                 st.markdown(result["answer"])
-                with st.expander("🔗 실행 체인 (Execution Flow)", expanded=True):
+                with st.expander("실행 체인 (Execution Flow)"):
                     _render_execution_chain(result.get("trace") or {})
 
     if shared_validation_summaries or shared_missing_inputs:
-        st.divider()
-        st.markdown("**공통 계산 안내**")
+        st.markdown('<hr class="result-divider">', unsafe_allow_html=True)
+        info_html = '<div class="info-section"><h4>공통 계산 안내</h4>'
         for summary in shared_validation_summaries:
-            st.info(summary)
+            info_html += f'<p style="margin:0.3rem 0;color:#cbd5e1;">{summary}</p>'
+        info_html += '</div>'
+        st.markdown(info_html, unsafe_allow_html=True)
         if shared_missing_inputs:
             st.caption("추가로 필요한 입력")
             _render_missing_input_tags(shared_missing_inputs)
 
     if shared_followups:
-        st.divider()
-        st.markdown("**공통 보정 질문 예시**")
-        st.caption("아래 예시는 특정 백엔드 전용이 아니라 현재 질문을 계산 가능하게 바꾸기 위한 공통 입력 예시입니다.")
+        st.markdown('<hr class="result-divider">', unsafe_allow_html=True)
+        followup_html = '<div class="info-section"><h4>공통 보정 질문 예시</h4>'
+        followup_html += '<p style="margin:0 0 0.5rem 0;color:#94a3b8;font-size:0.85rem;">현재 질문을 계산 가능하게 바꾸기 위한 공통 입력 예시</p>'
         for suggestion in shared_followups:
-            st.write(f"- {suggestion}")
+            followup_html += f'<p style="margin:0.2rem 0;color:#cbd5e1;">- {suggestion}</p>'
+        followup_html += '</div>'
+        st.markdown(followup_html, unsafe_allow_html=True)
