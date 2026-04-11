@@ -208,8 +208,6 @@ __marimo__/
 *.DS_Store
 *.png
 !docs/*.png
-__pycache__/
-.venv/
 
 # Local test/debug scripts (contain internal endpoints)
 test_db_read.py

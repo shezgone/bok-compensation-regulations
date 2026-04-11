@@ -122,25 +122,9 @@ def select_relevant_sections(question: str, *, top_k: int = 8) -> List[Dict[str,
     return selected or sections[:top_k]
 
 
-def _compose_extraction_prompt(question: str, selected_sections: List[Dict[str, str]]) -> str:
-    selected_text = "\n\n".join(section["content"] for section in selected_sections)
-    return f"""당신은 한국은행 보수규정 분석을 위한 '정보 추출기(Extractor)'입니다.
-아래 제공된 [전처리 문서 발췌] 내용에서, 사용자의 [질문]에 답변하거나 계산하기 위해 필요한 규정, 예외사항, 직제/직급별 지급 기준액 등의 '사실(Fact)'만을 빠짐없이 요약하고 추출하세요.
-여기서는 직접 계산하거나 최종 답변을 내리지 마세요! 오직 필요한 데이터만 짧고 명확한 목록 형태로 나열하세요. (예: "1. 본봉 산정 기준: ~, 2. 파트장 직책급: 350,000원")
-같은 정보가 JSON과 마크다운 표에 모두 있으면 JSON을 기준값으로 사용하세요.
-
-[질문]
-{question}
-
-[전처리 문서 발췌]
-{selected_text}
-
-추출된 사실:"""
-
-
-def _compose_reasoning_prompt(question: str, extracted_facts: str) -> str:
-    return f"""당신은 한국은행 보수규정 질의 응답 보조 모델(계산 및 설명자)입니다.
-반드시 아래 제공된 [추출된 사실]만을 근거로 삼아 질문에 최종 답변을 작성하세요. 지식이나 외부 정보를 더하지 마세요.
+def _compose_qa_prompt(question: str, document: str) -> str:
+    return f"""당신은 한국은행 보수규정 질의 응답 에이전트(계산 및 설명자)입니다.
+아래 제공된 [전체 전처리 문서]만을 근거로 삼아 질문에 최종 답변을 작성하세요. 지식이나 외부 정보를 더하지 마세요.
 문서에서 확인되지 않는 내용은 '제공된 전처리 문서에서 확인되지 않습니다.'라고 답하세요.
 복합 질문이면 항목별로 나눠 답하세요.
 질문이 수식/계산을 요구하면 계산식을 짧고 명확하게 보여주세요. (예 형식: 적용 규칙, 사용한 값, 계산식, 최종 답)
@@ -153,55 +137,36 @@ def _compose_reasoning_prompt(question: str, extracted_facts: str) -> str:
 [질문]
 {question}
 
-[추출된 사실]
-{extracted_facts}
+[전체 전처리 문서]
+{document}
 
 최종 답변:"""
 
 
-def _invoke_2step_context_answer(question: str, selected_sections: List[Dict[str, str]]) -> Tuple[str, Dict[str, int], str]:
+def _invoke_1step_context_answer(question: str, document: str) -> Tuple[str, Dict[str, int]]:
     try:
         from langchain_core.messages import HumanMessage
     except ImportError:
-        return "Error: LangChain core not installed", {"input": 0, "output": 0}, ""
+        return "Error: LangChain core not installed", {"input": 0, "output": 0}
 
-    from langchain_openai import ChatOpenAI
-    model = ChatOpenAI(
-        base_url="http://211.188.81.250:30402/v1",
-        model="HCX-GOV-THINK-V1-32B",
-        api_key="sk-dummy",
-        temperature=0,
-        max_tokens=2048,
-    )
+    model = create_chat_model(temperature=0.0)
     
-    # 1단계: 추출 (Extraction)
-    extraction_prompt = _compose_extraction_prompt(question, selected_sections)
-    extraction_response = model.invoke([HumanMessage(content=extraction_prompt)])
-    extracted_facts = str(extraction_response.content)
-    usage1 = _extract_usage(extraction_response)
+    prompt = _compose_qa_prompt(question, document)
+    response = model.invoke([HumanMessage(content=prompt)])
+    final_answer = str(response.content)
+    usage = _extract_usage(response)
     
-    # 2단계: 추론/계산 (Reasoning & Calculation)
-    reasoning_prompt = _compose_reasoning_prompt(question, extracted_facts)
-    reasoning_response = model.invoke([HumanMessage(content=reasoning_prompt)])
-    final_answer = str(reasoning_response.content)
-    usage2 = _extract_usage(reasoning_response)
-    
-    total_usage = {
-        "input": usage1.get("input", 0) + usage2.get("input", 0),
-        "output": usage1.get("output", 0) + usage2.get("output", 0),
-    }
-    
-    return final_answer, total_usage, extracted_facts
+    return final_answer, usage
 
 
-def answer_with_context(question: str) -> Tuple[str, List[Dict[str, str]]]:
+def answer_with_context(question: str) -> Tuple[str, str]:
     validation = validate_question(question, _validation_entities(question))
     if validation is not None:
-        return validation["message"], []
+        return validation["message"], ""
 
-    sections = select_relevant_sections(question)
-    answer, _, _ = _invoke_2step_context_answer(question, sections)
-    return answer, sections
+    document = load_context_document()
+    answer, _ = _invoke_1step_context_answer(question, document)
+    return answer, document
 
 
 def run_with_trace(question: str) -> Dict[str, object]:
@@ -224,8 +189,8 @@ def run_with_trace(question: str) -> Dict[str, object]:
             },
             "next_inputs": [] if validation is not None else [
                 {
-                    "function": "select_relevant_sections",
-                    "values": {"question": question, "top_k": 8},
+                    "function": "load_context_document",
+                    "values": {},
                 }
             ],
         }
@@ -242,48 +207,43 @@ def run_with_trace(question: str) -> Dict[str, object]:
             },
         }
 
-    sections = select_relevant_sections(question)
+    document = load_context_document()
     function_calls.append(
         {
             "module": "src/bok_compensation_context/context_query.py",
-            "function": "select_relevant_sections",
-            "arguments": {"question": question, "top_k": 8},
+            "function": "load_context_document",
+            "arguments": {},
             "result": {
-                "section_count": len(sections),
-                "selected_sections": [section["title"] for section in sections],
-                "context_preview": _trace_preview_text("\n\n".join(section["content"] for section in sections), max_lines=6),
+                "document_length": len(document),
+                "context_preview": _trace_preview_text(document, max_lines=6),
             },
             "next_inputs": [
                 {
-                    "function": "_invoke_2step_context_answer",
+                    "function": "_invoke_1step_context_answer",
                     "values": {
                         "question": question,
-                        "selected_sections": [section["title"] for section in sections],
+                        "document": "full document",
                     },
                 }
             ],
         }
     )
 
-    answer, token_usage, extracted_facts = _invoke_2step_context_answer(question, sections)
-    
-    extraction_prompt = _compose_extraction_prompt(question, sections)
-    reasoning_prompt = _compose_reasoning_prompt(question, extracted_facts)
+    answer, token_usage = _invoke_1step_context_answer(question, document)
+    prompt = _compose_qa_prompt(question, document)
     
     function_calls.append(
         {
             "module": "src/bok_compensation_context/context_query.py",
-            "function": "_invoke_2step_context_answer",
+            "function": "_invoke_1step_context_answer",
             "arguments": {
                 "question": question,
-                "selected_sections": [section["title"] for section in sections],
+                "document": "full document",
             },
             "llm_input": {
-                "step1_extraction_prompt": extraction_prompt,
-                "step2_reasoning_prompt": reasoning_prompt,
+                "qa_prompt": prompt,
             },
             "result": {
-                "extracted_facts": extracted_facts,
                 "answer": answer,
                 "token_usage": token_usage,
             },

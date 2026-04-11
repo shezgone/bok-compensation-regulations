@@ -66,6 +66,19 @@ def create_chat_model(*, temperature: float = 0.0, json_output: bool = False) ->
     raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
 
 
+def create_qwen_model(*, temperature: float = 0.0) -> Any:
+    """Qwen DB query sub-agent용 모델. QWEN_* 환경변수 우선, 없으면 OPENAI_* 폴백."""
+    from langchain_openai import ChatOpenAI
+
+    return ChatOpenAI(
+        model=os.getenv("QWEN_MODEL", get_llm_model_name()),
+        base_url=os.getenv("QWEN_BASE_URL", os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL)),
+        api_key=os.getenv("QWEN_API_KEY", os.getenv("OPENAI_API_KEY", "your-api-key-here")),
+        temperature=temperature,
+        max_tokens=2048,
+    )
+
+
 def create_embedding_model() -> Any:
     provider = get_llm_provider()
     model_name = get_embedding_model_name()

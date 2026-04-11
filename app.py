@@ -191,13 +191,13 @@ def _run_neo4j(question: str) -> dict:
     }
 
 
-def _run_context_rag(question: str) -> str:
+def _run_context_rag(question: str) -> dict:
     from bok_compensation_context.context_query import run_with_trace as context_run_with_trace
 
     return context_run_with_trace(question)
 
 
-def _run_base_llm(question: str) -> str:
+def _run_base_llm(question: str) -> dict:
     from langchain_core.messages import HumanMessage
     from bok_compensation_typedb.llm import create_chat_model
 
@@ -828,27 +828,45 @@ def _clear_question_input() -> None:
 EXAMPLE_QUESTIONS = [
     {
         "id": "Q1",
-        "label": "단일 조회 — 연봉제 본봉 산정",
-        "question": (
-            "3급 G3 종합기획직원 A가 다음 조건을 모두 충족할 때, "
-            "2025년 5월 1일 기준으로 적용되는 연봉제 본봉을 산정하시오.\n"
-            "조건:\n"
-            "1. 2024년 12월 31일 기준 직전 연봉제 본봉: 60,000,000원\n"
-            "2. 2024년도 성과평가 등급: 'EX'"
-        ),
-        "answer": "63,024,000원 (= 60,000,000 + 3,024,000)",
+        "label": "초봉 조회 — G5 초임호봉",
+        "question": "G5 직원의 초봉은?",
+        "answer": "종합기획직원 5급의 초임호봉은 11호봉이며, 5급 11호봉 본봉은 1,554,000원",
     },
     {
         "id": "Q2",
-        "label": "다중 관계 조인 — 직책급·차등액·상한액",
-        "question": "3급 팀장이며 성과평가 EX 등급인 직원의 직책급, 연봉차등액, 연봉상한액을 모두 조회하시오.",
-        "answer": "직책급 1,956,000원, 차등액 3,024,000원, 상한액 77,724,000원",
+        "label": "직책급 단일 조회",
+        "question": "팀장 3급 직책급은?",
+        "answer": "팀장 직위의 3급 연간 직책급액은 1,956,000원",
     },
     {
         "id": "Q3",
-        "label": "범위 필터 — 차등액 ≥ 200만원",
-        "question": "연봉차등액이 200만원 이상인 직급과 평가등급 조합을 모두 나열하시오.",
-        "answer": "1급EX(3,672,000), 1급EE(2,448,000), 2급EX(3,348,000), 2급EE(2,232,000), 3급EX(3,024,000), 3급EE(2,016,000) — 6건",
+        "label": "국외본봉 조회",
+        "question": "미국 주재 2급 직원의 국외본봉은?",
+        "answer": "미국 주재 2급 직원의 월 국외본봉은 9,760 USD",
+    },
+    {
+        "id": "Q4",
+        "label": "연봉제 본봉 산정 (계산)",
+        "question": "현재 연봉제 본봉이 70,000,000원이고 3급 EE이면 조정 후 연봉제 본봉은?",
+        "answer": "72,016,000원 (= 70,000,000 + 차등액 2,016,000)",
+    },
+    {
+        "id": "Q5",
+        "label": "상한액 초과 판정",
+        "question": "현재 연봉제 본봉이 77,000,000원인 3급 직원이 EE등급이면 상한을 넘는가?",
+        "answer": "77,000,000 + 2,016,000 = 79,016,000원으로, 3급 상한액 77,724,000원을 초과",
+    },
+    {
+        "id": "Q6",
+        "label": "규정 적용 판단 — 기한부 고용계약자",
+        "question": "기한부 고용계약자는 상여금을 받을 수 있어?",
+        "answer": "받을 수 없다. 제14조에 따라 제2장 보수 및 제3장 상여금 규정을 적용하지 않는다",
+    },
+    {
+        "id": "Q7",
+        "label": "임금피크제 지급률 조회",
+        "question": "임금피크제 적용 대상과 연차별 지급률은?",
+        "answer": "잔여근무기간 3년 이하 직원 대상. 1년차 0.9, 2년차 0.8, 3년차 0.7",
     },
 ]
 
