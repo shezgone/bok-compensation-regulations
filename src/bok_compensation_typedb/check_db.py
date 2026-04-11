@@ -12,9 +12,6 @@ print(f"Exists: {driver.databases.contains(db)}")
 print()
 
 queries = [
-    ("규정", "match $x isa 규정;"),
-    ("조문", "match $x isa 조문;"),
-    ("개정이력", "match $x isa 개정이력;"),
     ("직렬", "match $x isa 직렬;"),
     ("직급", "match $x isa 직급;"),
     ("직위", "match $x isa 직위;"),
@@ -44,8 +41,6 @@ print()
 
 # 관계 확인
 rel_queries = [
-    ("규정구성", "match $r isa 규정구성;"),
-    ("규정개정", "match $r isa 규정개정;"),
     ("직렬분류", "match $r isa 직렬분류;"),
     ("호봉체계구성", "match $r isa 호봉체계구성;"),
     ("직책급결정", "match $r isa 직책급결정;"),

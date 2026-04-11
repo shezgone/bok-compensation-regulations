@@ -41,11 +41,8 @@ attribute 임금피크제코드, value string;
 attribute 국외본봉코드, value string;
 attribute 초임호봉코드, value string;
 
-attribute 규정명, value string;
 attribute 보수기준명, value string;
 attribute 상여금기준명, value string;
-attribute 규정설명, value string;
-attribute 개정이력설명, value string;
 attribute 직렬설명, value string;
 attribute 보수기준설명, value string;
 attribute 수당설명, value string;
@@ -56,15 +53,7 @@ attribute 연봉상한기준설명, value string;
 attribute 임금피크제설명, value string;
 attribute 국외본봉기준설명, value string;
 attribute 초임호봉기준설명, value string;
-attribute 시행일,         value datetime;
-attribute 개정일,         value datetime;
-attribute 활성여부,       value boolean;
-
-# --- 규정 관련 속성 ---
-attribute 규정번호,       value string;
-attribute 조번호,         value integer;
-attribute 항번호,         value integer;
-attribute 조문내용,       value string;
+# --- (규정/조문/개정이력 관련 속성은 context RAG에서 처리 — 스키마에서 제외) ---
 
 # --- 직렬 관련 속성 (NEW) ---
 attribute 직렬코드,       value string;
@@ -123,27 +112,7 @@ attribute 우선순위,       value integer;   # 낮을수록 우선 (1=부칙, 
 # 2. 엔티티 타입 (Entity Types)
 # ============================================================
 
-# --- 규정 체계 ---
-entity 규정,
-    owns 규정번호 @key,
-    owns 규정명,
-    owns 규정설명,
-    owns 시행일,
-    owns 활성여부,
-    plays 규정구성:상위규정,
-    plays 규정개정:대상규정;
-
-entity 조문,
-    owns 조번호,
-    owns 항번호,
-    owns 조문내용,
-    plays 규정구성:하위조문,
-    plays 규정_대체:피대체대상;
-
-entity 개정이력,
-    owns 개정일,
-    owns 개정이력설명,
-    plays 규정개정:이력;
+# --- (규정/조문/개정이력은 context RAG에서 텍스트로 처리 — 그래프에서 제외) ---
 
 # --- 인사 ---
 entity 직렬,
@@ -276,14 +245,7 @@ entity 평가결과,
 # 3. 관계 타입 (Relation Types)
 # ============================================================
 
-# --- 규정 관계 ---
-relation 규정구성,
-    relates 상위규정,
-    relates 하위조문;
-
-relation 규정개정,
-    relates 대상규정,
-    relates 이력;
+# --- (규정구성/규정개정 관계는 context RAG에서 처리 — 그래프에서 제외) ---
 
 # --- 인사 관계 ---
 
@@ -339,8 +301,7 @@ entity 부칙,
     owns 부칙내용,
     owns 부칙시행일,
     owns 우선순위,
-    plays 규정_대체:대체규정,
-    plays 규정구성:하위조문;
+    plays 규정_대체:대체규정;
 
 # --- 규정_대체 관계 (일반화된 오버라이드) ---
 # 부칙이 본문 조문, 별표 데이터 등 모든 유형의 규정 요소를 대체할 수 있음

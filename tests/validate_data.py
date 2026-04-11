@@ -107,7 +107,7 @@ EXPECTED_EXEC = [
 
 # 노드/관계 수
 EXPECTED_COUNTS = {
-    "규정": 1, "조문": 18, "개정이력": 9, "직렬": 5, "직급": 14, "직위": 10,
+    "직렬": 5, "직급": 14, "직위": 10,
     "호봉": 245, "수당": 15, "보수기준": 4, "직책급기준": 18, "상여금기준": 25,
     "연봉차등액기준": 12, "연봉상한액기준": 3, "임금피크제기준": 3,
     "국외본봉기준": 16, "초임호봉기준": 6, "평가결과": 5,
@@ -380,10 +380,6 @@ def print_results(db_name: str, results: list):
 
 def main():
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
-
-    if target in:
-        try:
-        except Exception as e:
 
     if target in ("typedb", "all"):
         try:
