@@ -316,88 +316,71 @@ if "question_input" not in st.session_state:
 # 아키텍처별 실행 함수 (lazy import — 연결 실패 시 graceful)
 # ---------------------------------------------------------------------------
 
+def _run_with_fallback(primary_fn, question: str, mode: str, query_language: str) -> dict:
+    """Graph agent 실행. 실패 시 Context RAG로 fallback."""
+    try:
+        res = primary_fn(question)
+        if isinstance(res, dict) and "trace_logs" in res:
+            ans = res["answer"]
+            trace_calls = res["trace_logs"]
+        else:
+            ans = str(res)
+            trace_calls = []
+
+        # 시스템 오류가 답변에 포함되면 fallback
+        if ans and "시스템 오류" in ans:
+            raise RuntimeError(ans)
+
+        return {
+            "answer": ans,
+            "trace": {
+                "question": question,
+                "mode": f"{mode} Agent",
+                "query_language": query_language,
+                "function_calls": trace_calls,
+            },
+        }
+    except Exception as e:
+        # Fallback: Context RAG
+        fallback_trace = [{
+            "module": "Fallback",
+            "function": f"{mode}_to_ContextRAG",
+            "arguments": {"original_error": str(e)[:200]},
+            "result": "Context RAG fallback 실행",
+        }]
+        try:
+            from bok_compensation_context.context_query import run_with_trace as ctx_run
+            ctx_result = ctx_run(question)
+            fallback_answer = ctx_result.get("answer", "")
+            ctx_calls = (ctx_result.get("trace") or {}).get("function_calls", [])
+            return {
+                "answer": f"[{mode} 연결 실패 → Context RAG fallback]\n\n{fallback_answer}",
+                "trace": {
+                    "question": question,
+                    "mode": f"{mode} → Context RAG (fallback)",
+                    "query_language": query_language,
+                    "function_calls": fallback_trace + ctx_calls,
+                },
+            }
+        except Exception as fallback_e:
+            return {
+                "answer": f"{mode} 및 Context RAG 모두 실패: {e}",
+                "trace": {
+                    "question": question,
+                    "mode": f"{mode} (실패)",
+                    "function_calls": fallback_trace,
+                },
+            }
+
+
 def _run_typedb(question: str) -> dict:
     from bok_compensation_typedb.agent import run_query as typedb_run_query
-
-    res = typedb_run_query(question)
-    
-    if isinstance(res, dict) and "trace_logs" in res:
-        ans = res["answer"]
-        trace_calls = res["trace_logs"]
-    else:
-        ans = str(res)
-        trace_calls = [
-            {
-                "module": "bok_compensation_typedb.agent",
-                "function": "run_query",
-                "arguments": {"question": question},
-                "result": "최종 추론/계산 결과"
-            },
-            {
-                "module": "TypeDB",
-                "function": "execute_typeql",
-                "arguments": {"query": "match $pos isa 직위..."},
-                "result": "TypeDB 내부 연산을 마친 JSON 결과값"
-            },
-            {
-                "module": "bok_compensation_typedb.agent",
-                "function": "generate_answer",
-                "arguments": {"typeql_result": "데이터"},
-                "result": ans
-            }
-        ]
-
-    return {
-        "answer": ans,
-        "trace": {
-            "question": question,
-            "mode": "TypeDB Agent",
-            "query_language": "TypeQL",
-            "function_calls": trace_calls
-        }
-    }
+    return _run_with_fallback(typedb_run_query, question, "TypeDB", "TypeQL")
 
 
 def _run_neo4j(question: str) -> dict:
     from bok_compensation_neo4j.agent import run_query as neo4j_run_query
-
-    res = neo4j_run_query(question)
-    
-    if isinstance(res, dict) and "trace_logs" in res:
-        ans = res["answer"]
-        trace_calls = res["trace_logs"]
-    else:
-        ans = str(res)
-        trace_calls = [
-            {
-                "module": "bok_compensation_neo4j.agent",
-                "function": "run_query",
-                "arguments": {"question": question},
-                "result": "최종 추론/계산 결과"
-            },
-            {
-                "module": "Neo4j_DB",
-                "function": "execute_cypher",
-                "arguments": {"query": "MATCH ... b.amount * m.value AS RaiseAmount"},
-                "result": "Neo4j 내부 연산을 마친 JSON 결과값"
-            },
-            {
-                "module": "bok_compensation_neo4j.agent",
-                "function": "generate_answer",
-                "arguments": {"cypher_result": "데이터"},
-                "result": ans
-            }
-        ]
-
-    return {
-        "answer": ans,
-        "trace": {
-            "question": question,
-            "mode": "Neo4j Agent",
-            "query_language": "Cypher",
-            "function_calls": trace_calls
-        }
-    }
+    return _run_with_fallback(neo4j_run_query, question, "Neo4j", "Cypher")
 
 
 def _run_context_rag(question: str) -> dict:
