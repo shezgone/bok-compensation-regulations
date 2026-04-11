@@ -13,26 +13,45 @@ logger = logging.getLogger(__name__)
 
 QWEN_SCHEMA_PROMPT = """당신은 한국은행 보수규정 전문 Neo4j Cypher 쿼리 에이전트(Qwen)입니다.
 Neo4j 데이터베이스에서 기준표(수치, 금액, 한도 등)를 조회하는 역할만 담당합니다.
-사용자의 질문(예: "3급 팀장 직책급액은?")을 분석하여 `execute_cypher` 도구를 호출하고 결과를 반환하세요.
+사용자의 질문을 분석하여 `execute_cypher` 도구를 호출하고 결과를 반환하세요.
 
-[Neo4j 스키마 지식]
+[Neo4j 스키마]
+
 Nodes:
-- JobGrade {name: string}
-- EvaluationGrade {name: string}
-- BaseSalary {amount: integer, step: integer}
-- SalaryLimit {amount: integer}
-- DutyAllowance {amount: integer, name: string}
-- DifferentialAmount {amount: integer}
+- CareerTrack {name}          — 직렬 (예: "종합기획직원")
+- JobGrade {name}              — 직급 (예: "1급","2급","3급","4급","5급","6급","G1"~"G5")
+- BaseSalary {step, amount}    — 호봉별 본봉 (step=호봉번호, amount=월 본봉액)
+- DutyAllowance {name, code, amount} — 직책급 (name=직위명, code=직위코드, amount=연간 직책급액)
+- SalaryLimit {amount}         — 연봉 상한액
+- EvaluationGrade {name}       — 평가등급 (예: "EX","EE","ME","BE")
+- DifferentialAmount {amount}  — 연봉 차등액
+- WagePeak {year, payout_rate} — 임금피크제 연차별 지급률
+- BonusRate {code, rate}       — 평가상여금 지급률
 
 Relationships:
+- (CareerTrack)-[:HAS_GRADE]->(JobGrade)
 - (JobGrade)-[:HAS_BASE_SALARY]->(BaseSalary)
-- (JobGrade)-[:HAS_SALARY_LIMIT]->(SalaryLimit)
 - (JobGrade)-[:HAS_DUTY_ALLOWANCE]->(DutyAllowance)
+- (JobGrade)-[:HAS_SALARY_LIMIT]->(SalaryLimit)
 - (EvaluationGrade)-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: string}]->(DifferentialAmount)
+- (EvaluationGrade)-[:HAS_BONUS_RATE {for_duty: string}]->(BonusRate)
 
-<정상 예시 모음>
-- 차등액 조회:
+[주의사항]
+- 직책급 질문은 DutyAllowance 노드를 사용한다. BaseSalary가 아니다.
+- DutyAllowance.name은 직위명(예: "팀장","부장","부서장(가)")이다.
+- 직책급 조회 시 JobGrade와 DutyAllowance를 모두 조건으로 걸어야 한다.
+
+[Cypher 예시]
+- 호봉 본봉 조회:
+  `MATCH (j:JobGrade {name: '5급'})-[:HAS_BASE_SALARY]->(b:BaseSalary {step: 11}) RETURN b.amount as amount`
+- 직책급 조회:
+  `MATCH (j:JobGrade {name: '3급'})-[:HAS_DUTY_ALLOWANCE]->(d:DutyAllowance {name: '팀장'}) RETURN d.amount as amount`
+- 연봉 차등액 조회:
   `MATCH (e:EvaluationGrade {name: 'EX'})-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: '3급'}]->(d:DifferentialAmount) RETURN d.amount as amount`
+- 연봉 상한액 조회:
+  `MATCH (j:JobGrade {name: '3급'})-[:HAS_SALARY_LIMIT]->(s:SalaryLimit) RETURN s.amount as amount`
+- 임금피크제 지급률 조회:
+  `MATCH (w:WagePeak) RETURN w.year as year, w.payout_rate as rate ORDER BY w.year`
 """
 
 HCX_SYSTEM_PROMPT = """당신은 한국은행 보수규정 전문 [하이브리드 RAG 에이전트(Hybrid Reasoning Agent)] (HCX) 입니다.
@@ -99,9 +118,9 @@ def ask_db_expert(question: str) -> str:
 @tool
 def search_regulations(keyword: str) -> str:
     """텍스트 문서에서 징계 감액률, 기준일 등 본문 문맥(Context)을 검색합니다."""
-    from src.bok_compensation_context.context_query import select_relevant_sections
+    from src.bok_compensation_context.context_query import select_relevant_rules
     try:
-        sections = select_relevant_sections(keyword, top_k=3)
+        sections = select_relevant_rules(keyword, top_k=3)
         if not sections: return "일치하는 본문 결과가 없습니다."
         return "\n\n".join([sec["content"] for sec in sections])
     except Exception as e: return f"Error: {str(e)}"

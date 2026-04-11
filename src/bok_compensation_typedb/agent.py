@@ -112,9 +112,9 @@ def ask_db_expert(question: str) -> str:
 @tool
 def search_regulations(keyword: str) -> str:
     """텍스트 문서에서 징계 감액률, 본봉 계산 규칙, 기준일 등 본문 문맥(Context)을 검색합니다."""
-    from src.bok_compensation_context.context_query import select_relevant_sections
+    from src.bok_compensation_context.context_query import select_relevant_rules
     try:
-        sections = select_relevant_sections(keyword, top_k=3)
+        sections = select_relevant_rules(keyword, top_k=3)
         if not sections:
             return "일치하는 본문 결과가 없습니다."
         return "\n\n".join([sec["content"] for sec in sections])

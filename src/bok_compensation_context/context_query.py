@@ -12,6 +12,7 @@ from src.bok_compensation_typedb.question_validation import extract_step_no, val
 
 
 CONTEXT_PATH = Path(__file__).with_name("regulation_context.md")
+RULES_PATH = Path(__file__).with_name("regulation_rules.md")
 
 
 def _validation_entities(question: str) -> Dict[str, Any]:
@@ -48,6 +49,10 @@ def _extract_usage(response: Any) -> Dict[str, int]:
 
 def load_context_document() -> str:
     return CONTEXT_PATH.read_text(encoding="utf-8")
+
+
+def load_rules_document() -> str:
+    return RULES_PATH.read_text(encoding="utf-8")
 
 
 def _normalize(text: str) -> str:
@@ -103,6 +108,53 @@ def select_relevant_sections(question: str, *, top_k: int = 8) -> List[Dict[str,
         if any(marker in normalized_question for marker in ("국외본봉", "주재", "미국", "독일", "일본", "영국", "홍콩", "중국")) and "국외본봉표" in content:
             score += 4.0
         if any(marker in normalized_question for marker in ("연봉차등", "상한", "연봉제")) and "연봉제 관련 표" in content:
+            score += 4.0
+        if any(marker in normalized_question for marker in ("기한부", "고용계약", "상여금", "개정", "임금피크")) and "주요 조문" in content:
+            score += 4.0
+        if any(marker in normalized_question for marker in ("연봉제", "본봉", "조정", "차등액", "직급평점", "평가", "기준일")) and "계산 규칙" in content:
+            score += 6.0
+        if any(marker in normalized_question for marker in ("g3", "g5", "직급평점", "평가등급", "본봉 조정", "국외본봉")) and "용어 정규화" in content:
+            score += 4.0
+        if any(marker in normalized_question for marker in ("기한부", "반장", "직책", "상한", "기준일", "직급평점")) and "적용 제외 및 주의사항" in content:
+            score += 5.0
+        if any(marker in normalized_question for marker in ("직급평점", "반장", "기준일", "ee", "연봉제")) and "문서 사용 원칙" in content:
+            score += 5.0
+
+        scored.append((score, section))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    selected = [section for score, section in scored[:top_k] if score > 0]
+    return selected or sections[:top_k]
+
+
+def select_relevant_rules(question: str, *, top_k: int = 3) -> List[Dict[str, str]]:
+    """MoE agent의 search_regulations 도구용. 수치 테이블 없는 조문 전용 문서에서 검색."""
+    return _score_sections(split_sections(load_rules_document()), question, top_k=top_k)
+
+
+def _score_sections(sections: List[Dict[str, str]], question: str, *, top_k: int) -> List[Dict[str, str]]:
+    question_tokens = set(_tokens(question))
+    normalized_question = _normalize(question)
+    scored: List[Tuple[float, Dict[str, str]]] = []
+
+    for section in sections:
+        content = section["content"]
+        section_tokens = set(_tokens(content))
+        overlap = len(question_tokens & section_tokens)
+        score = float(overlap)
+
+        normalized_content = _normalize(content)
+        for token in question_tokens:
+            if token and token in normalized_content:
+                score += min(len(token) / 3.0, 2.0)
+
+        if any(marker in normalized_question for marker in ("초봉", "초임", "호봉")) and "초임호봉" in content:
+            score += 4.0
+        if any(marker in normalized_question for marker in ("직책급", "팀장", "부장", "반장")) and "직책급" in content:
+            score += 4.0
+        if any(marker in normalized_question for marker in ("상여금", "ee", "ex", "me", "be")) and "상여금" in content:
+            score += 4.0
+        if any(marker in normalized_question for marker in ("국외본봉", "주재", "미국", "독일", "일본", "영국", "홍콩", "중국")) and "국외본봉" in content:
             score += 4.0
         if any(marker in normalized_question for marker in ("기한부", "고용계약", "상여금", "개정", "임금피크")) and "주요 조문" in content:
             score += 4.0
