@@ -98,8 +98,10 @@ python -m src.bok_compensation_typedb.insert_data
 # ─────────────────────────────────────────────
 echo ""
 echo "🧠 [5/5] Neo4j 지식 그래프 세팅..."
+# schema_seeder.py가 wipe + 전체 시드(Cypher MERGE)를 모두 수행한다.
+# bok_compensation_neo4j/insert_data.py는 데이터 테이블 정의만 담은 모듈로,
+# schema_seeder가 import해서 사용하므로 별도 실행 필요 없음.
 python src/bok_compensation_neo4j/schema_seeder.py
-python src/bok_compensation_neo4j/insert_data.py
 
 # ─────────────────────────────────────────────
 # 완료
