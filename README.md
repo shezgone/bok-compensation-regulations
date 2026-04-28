@@ -14,15 +14,35 @@
 | Docker Desktop | TypeDB, Neo4j 컨테이너 구동용. 없으면 Context RAG만 테스트 가능 |
 | Python 3.9+ | 없으면 `setup.sh`가 Homebrew로 자동 설치 시도 |
 
-### 2. LLM 엔드포인트 설정
-
-`.env.example`을 복사해서 `.env`를 만들고, **사용할 LLM 엔드포인트만 수정**하면 된다.
+### 2-A. 전체 설치 (Graph DB 포함, 권장)
 
 ```bash
-cp .env.example .env
+chmod +x setup.sh && ./setup.sh
 ```
 
-`.env` 핵심 설정:
+이 스크립트가 자동으로 수행하는 작업:
+1. Docker / Python 사전 환경 점검
+2. `.env.example` → `.env`, `llm_template.py` → `llm.py` 복사 (이미 있으면 건너뜀)
+3. Docker로 TypeDB(포트 1729) + Neo4j(포트 7474/7687) 컨테이너 기동
+4. Python 가상환경(`.venv`) 생성 및 전체 의존성 설치
+5. TypeDB/Neo4j에 보수규정 스키마 생성 및 데이터 적재
+
+### 2-B. Context RAG만 테스트 (Docker 불필요)
+
+Graph DB 없이 Context RAG 모드만 테스트하려면:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[llm,demo]"
+cp .env.example .env
+cp src/bok_compensation_typedb/llm_template.py src/bok_compensation_typedb/llm.py
+```
+
+### 3. LLM 엔드포인트 설정
+
+`setup.sh`가 만들어 준 `.env` 파일을 열어 **LLM 엔드포인트만** 수정하면 된다.
+
 ```env
 # 메인 추론 모델 (HCX 역할)
 OPENAI_BASE_URL=https://your-llm-endpoint/v1
@@ -38,27 +58,6 @@ QWEN_API_KEY=your-qwen-api-key
 > OpenAI-compatible API(`/v1/chat/completions`)를 지원하는 엔드포인트면 어떤 모델이든 연결 가능.
 > vLLM, Ollama, LiteLLM, Azure OpenAI 등 모두 호환된다.
 
-### 3-A. 전체 설치 (Graph DB 포함)
-
-```bash
-chmod +x setup.sh && ./setup.sh
-```
-
-이 스크립트가 자동으로 수행하는 작업:
-1. Docker로 TypeDB(포트 1729) + Neo4j(포트 7474/7687) 컨테이너 기동
-2. Python 가상환경 생성 및 전체 의존성 설치
-3. TypeDB/Neo4j에 보수규정 스키마 생성 및 데이터 적재
-
-### 3-B. Context RAG만 테스트 (Docker 불필요)
-
-Graph DB 없이 Context RAG 모드만 테스트하려면:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[llm,demo]"
-```
-
 ### 4. 웹 UI 실행
 
 ```bash
@@ -67,6 +66,17 @@ streamlit run app.py --server.port 8088
 ```
 
 브라우저에서 `http://localhost:8088` 접속. 사이드바에서 테스트할 아키텍처를 선택하고 질문을 입력하면 된다.
+
+### 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|------|-------------|
+| `pip install -e ...` 가 build-backend 오류로 실패 | `pyproject.toml`이 구버전이면 `git pull`로 최신화 (`build-backend = "setuptools.build_meta"`) |
+| `ModuleNotFoundError: No module named 'dotenv'` | `python-dotenv` 누락 — `pip install -e ".[full]"` 재실행 |
+| `ModuleNotFoundError: No module named 'src.bok_compensation_typedb.llm'` | `llm.py` 미생성 — `cp src/bok_compensation_typedb/llm_template.py src/bok_compensation_typedb/llm.py` |
+| `attempted relative import with no known parent package` | `python src/.../create_db.py` 직접 실행 시 발생. 반드시 `PYTHONPATH=. python -m src.bok_compensation_typedb.create_db` 형태로 실행 |
+| `Cannot connect to the Docker daemon` | Docker Desktop이 실행 중인지 확인 |
+| TypeDB/Neo4j 컨테이너 기동 후 연결 실패 | DB 초기화에 시간이 걸림. 30초 후 재시도하거나 `docker compose logs typedb neo4j` 확인 |
 
 ---
 
