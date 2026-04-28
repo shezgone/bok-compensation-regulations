@@ -1,145 +1,135 @@
-"""
-한국은행 보수규정 — Neo4j용 데이터 테이블 모듈.
+import logging
+import os
+import sys
+import traceback
 
-이 파일은 보수규정 별표 수치 데이터만 정의한다.
-실제 Neo4j 시딩(Cypher MERGE)은 schema_seeder.py가 수행한다.
-"""
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-# ============================================================
-# 별표1 본봉표 (단위: 천원)
-# ============================================================
-SALARY_TABLE = {
-    "3급": {
-        "start": 1,
-        "amounts": [
-            100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000,
+from neo4j import GraphDatabase
+from src.bok_compensation_neo4j.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
+from src.bok_compensation_neo4j.data_tables import (
+    SALARY_TABLE, POSITION_PAY_TABLE, BONUS_RATE_TABLE, SALARY_DIFF_TABLE,
+    SALARY_CAP_TABLE, WAGE_PEAK_TABLE
+)
 
-            3188, 3300, 3642, 3752, 3869, 3984, 4102, 4419, 4530, 4654,
-            4763, 5006, 5187, 5312, 5430, 5555, 5690, 5821, 5925, 6032,
-            6142, 6229, 6316, 6399, 6495, 6583, 6657, 6738, 6812, 6890,
-        ],
-    },
-    "4급": {
-        "start": 1,
-        "amounts": [
-            600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1554, 1600, 1700, 1800, 1900, 2000,
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-            2343, 2642, 2754, 2867, 2980, 3093, 3204, 3542, 3662, 3780,
-            3893, 4095, 4417, 4529, 4650, 4762, 4882, 5057, 5183, 5300,
-            5421, 5539, 5669, 5778, 5889, 5992, 6082, 6170, 6257, 6340,
-            6428, 6499, 6576, 6657, 6733,
-        ],
-    },
-    "5급": {
-        "start": 1,
-        "amounts": [
-            579, 651, 715, 787, 862, 936, 1011, 1096, 1181, 1265,
-            1554, 1689, 1837, 1977, 2127, 2307, 2579, 2753, 2858, 2973,
-            3081, 3196, 3535, 3658, 3770, 3889, 4002, 4323, 4440, 4549,
-            4669, 4780, 4962, 5089, 5209, 5326, 5448, 5574, 5678, 5788,
-            5894, 5983, 6063, 6153, 6236, 6327, 6400, 6476, 6555, 6635,
-        ],
-    },
-    "6급": {
-        "start": 1,
-        "amounts": [
-            559, 620, 675, 743, 805, 871, 944, 1000, 1045, 1090,
-            1509, 1591, 1672, 1757, 1835, 2106, 2196, 2286, 2372, 2462,
-            2640, 2730, 2818, 2909, 2999, 3175, 3267, 3353, 3440, 3523,
-            3610, 3695, 3782, 3867, 3953, 4035, 4123, 4207, 4290, 4372,
-            4451, 4537, 4615, 4699, 4781, 4849, 4914, 4982, 5052, 5122,
-        ],
-    },
-    # ── 별표1의 3. 일반사무직원 본봉표 (단위: 천원) ──
-    "GA": {
-        "start": 1,
-        "amounts": [
-            531, 589, 641, 706, 765, 827, 897, 950, 993, 1036,
-            1434, 1511, 1588, 1669, 1743, 2001, 2086, 2172, 2253, 2339,
-            2508, 2594, 2677, 2763, 2849, 3016, 3104, 3185, 3268, 3347,
-        ],
-    },
-    # ── 별표1의 4. 서무직원 본봉표 (단위: 천원) ──
-    "CL": {
-        "start": 1,
-        "amounts": [
-            475, 527, 574, 631, 684, 740, 802, 850, 888, 927,
-            1283, 1352, 1421, 1493, 1560, 1790, 1867, 1943, 2016, 2093,
-            2244, 2321, 2395, 2473, 2549,
-        ],
-    },
-    # ── 별표1의 4. 청원경찰 본봉표 (서무직원과 동일, 단위: 천원) ──
-    "PO": {
-        "start": 1,
-        "amounts": [
-            475, 527, 574, 631, 684, 740, 802, 850, 888, 927,
-            1283, 1352, 1421, 1493, 1560, 1790, 1867, 1943, 2016, 2093,
-            2244, 2321, 2395, 2473, 2549,
-        ],
-    },
+CAREER_TRACKS = ["종합기획직원", "일반사무직원", "별정직원", "서무직원", "청원경찰"]
+
+GRADES = [
+    ("1급", "종합기획직원", 1), ("2급", "종합기획직원", 2), ("3급", "종합기획직원", 3),
+    ("4급", "종합기획직원", 4), ("5급", "종합기획직원", 5), ("6급", "종합기획직원", 6),
+    ("G1", "종합기획직원", 7), ("G2", "종합기획직원", 8), ("G3", "종합기획직원", 9),
+    ("G4", "종합기획직원", 10), ("G5", "종합기획직원", 11),
+    ("GA", "일반사무직원", 12), ("CL", "서무직원", 13), ("PO", "청원경찰", 14)
+]
+
+EVALUATIONS = [
+    ("EX", 0.10, 2), ("EE", 0.25, 1), ("ME", 0.40, 1), 
+    ("BE", 0.20, 0), ("NI", 0.05, 0)
+]
+
+POS_NAMES = {
+    "P01": "부서장(가)", "P02": "부서장(나)", "P03": "국소속실장",
+    "P04": "부장", "P05": "팀장", "P06": "반장", "P07": "조사역",
+    "P08": "주임조사역(C1)", "P09": "조사역(C2)"
 }
 
-# ============================================================
-# 별표1-1 직책급표 (종합기획직원, 단위: 천원/연간)
-# (직위코드, 직급코드) → 연간 직책급액
-# ============================================================
-POSITION_PAY_TABLE = [
-    # 부서장(가)
-    ("P01", "1급", 18192), ("P01", "2급", 16236),
-    # 부서장(나)
-    ("P02", "1급", 15792), ("P02", "2급", 13836),
-    # 국소속실장
-    ("P03", "1급", 7692), ("P03", "2급", 5736),
-    # 부장
-    ("P04", "2급", 4824), ("P04", "3급", 2868),
-    # 팀장
-    ("P05", "3급", 1956), ("P05", "4급", 0),
-    # 조사역
-    ("P07", "2급", 3012), ("P07", "3급", 1056),
-    # 주임조사역(C1)
-    ("P08", "3급", 1956), ("P08", "4급", 0),
-    # 조사역(C2)
-    ("P09", "4급", 1044), ("P09", "5급", 0),
-    # 조사역(C3)
-    ("P10", "5급", 1044), ("P10", "6급", 0),
-]
+class GraphSchemaSeeder:
+    def __init__(self, uri, user, password):
+        self.driver = GraphDatabase.driver(uri, auth=(user, password))
 
-# ============================================================
-# 별표7 연봉제본봉 차등액표 (단위: 천원/월)
-# (직급코드, 평가등급) → 차등액
-# ============================================================
-SALARY_DIFF_TABLE = [
-    ("1급", "EX", 3672), ("1급", "EE", 2448), ("1급", "ME", 1224), ("1급", "BE", 0),
-    ("2급", "EX", 3348), ("2급", "EE", 2232), ("2급", "ME", 1116), ("2급", "BE", 0),
-    ("3급", "EX", 3024), ("3급", "EE", 2016), ("3급", "ME", 1008), ("3급", "BE", 0),
-]
+    def close(self):
+        self.driver.close()
 
-# ============================================================
-# 별표8 연봉제본봉 상한액표 (단위: 천원/월)
-# ============================================================
-SALARY_CAP_TABLE = [
-    ("1급", 85728),
-    ("2급", 78540),
-    ("3급", 77724),
-]
+    def wipe_database(self):
+        with self.driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+            logger.info("Wiped existing Neo4j database.")
 
-# ============================================================
-# 별표9 임금피크제 기본급지급률
-# ============================================================
-WAGE_PEAK_TABLE = [
-    (1, 0.9),   # 1년차 90%
-    (2, 0.8),   # 2년차 80%
-    (3, 0.7),   # 3년차 70%
-]
+    def insert_all_data(self):
+        with self.driver.session() as session:
+            # 1. Career Tracks
+            for track in CAREER_TRACKS:
+                session.run("MERGE (t:CareerTrack {name: $name})", name=track)
 
-# ============================================================
-# 별표1-2 평가상여금 지급률표 (직책구분, 평가등급 → 지급률%)
-# ============================================================
-BONUS_RATE_TABLE = [
-    ("P01", "EX", 1.0), ("P01", "EE", 0.85), ("P01", "ME", 0.70), ("P01", "BE", 0.0),
-    ("P02", "EX", 1.0), ("P02", "EE", 0.85), ("P02", "ME", 0.70), ("P02", "BE", 0.0),
-    ("P05", "EX", 0.85), ("P05", "EE", 0.70), ("P05", "ME", 0.55), ("P05", "BE", 0.0),
-    ("P08", "EX", 0.70), ("P08", "EE", 0.55), ("P08", "ME", 0.40), ("P08", "BE", 0.0),
-    ("P09", "EX", 0.60), ("P09", "EE", 0.45), ("P09", "ME", 0.30), ("P09", "BE", 0.0),
-    ("P10", "EX", 0.60), ("P10", "EE", 0.45), ("P10", "ME", 0.30), ("P10", "BE", 0.0),
-]
+            # 2. Job Grades & relationship to CareerTrack
+            for grade, t_name, order in GRADES:
+                session.run("""
+                MERGE (g:JobGrade {name: $grade}) SET g.order = $order WITH g
+                MATCH (t:CareerTrack {name: $track}) MERGE (t)-[:HAS_GRADE]->(g)
+                """, grade=grade, order=order, track=t_name)
+
+            # 3. Base Salary Table
+            for grade, data in SALARY_TABLE.items():
+                start_step = data["start"]
+                for i, amt in enumerate(data["amounts"]):
+                    step = start_step + i
+                    session.run("""
+                    MATCH (g:JobGrade {name: $grade})
+                    MERGE (b:BaseSalary {step: $step, amount: $amount})
+                    MERGE (g)-[:HAS_BASE_SALARY {step: $step}]->(b)
+                    """, grade=grade, step=step, amount=amt * 1000)
+
+            # 4. Duty/Position Pay (직책급)
+            for pos_code, grade, amt in POSITION_PAY_TABLE:
+                duty_name = POS_NAMES.get(pos_code, pos_code)
+                session.run("""
+                MATCH (g:JobGrade {name: $grade})
+                MERGE (p:DutyAllowance {code: $code, amount: $amount, grade: $grade, name: $duty})
+                MERGE (g)-[:HAS_DUTY_ALLOWANCE]->(p)
+                """, code=pos_code, grade=grade, amount=amt * 1000, duty=duty_name)
+
+            # 5. Salary Caps (연봉상한)
+            for grade, limit in SALARY_CAP_TABLE:
+                code = f"CAP-{grade}"
+                session.run("""
+                MATCH (g:JobGrade {name: $grade})
+                MERGE (s:SalaryLimit {amount: $limit, code: $code})
+                MERGE (g)-[:HAS_SALARY_LIMIT]->(s)
+                """, grade=grade, limit=limit * 1000, code=code)
+
+            # 6. Evaluation Grades (평가등급)
+            for eval_grade, dist_rate, num_steps in EVALUATIONS:
+                session.run("MERGE (e:EvaluationGrade {name: $name, distribution_rate: $rate, steps: $steps})",
+                            name=eval_grade, rate=dist_rate, steps=num_steps)
+
+            # 7. Salary Differential (연봉차등)
+            for grade, eval_g, amt_k in SALARY_DIFF_TABLE:
+                code_val = f"DIFF-{grade}-{eval_g}"
+                session.run("""
+                MATCH (g:JobGrade {name: $grade})
+                MATCH (e:EvaluationGrade {name: $eval_g})
+                MERGE (e)-[:APPLIES_TO]->(g)
+                MERGE (d:DifferentialAmount {amount: $amount, code: $code, grade: $grade})
+                MERGE (e)-[:HAS_DIFFERENTIAL_AMOUNT {for_grade: $grade}]->(d)
+                """, grade=grade, eval_g=eval_g, amount=amt_k * 1000, code=code_val)
+
+            # 8. Wage Peak (임금피크제)
+            for year, p_rate in WAGE_PEAK_TABLE:
+                code = f"WP-{year}"
+                session.run("MERGE (w:WagePeak {code: $code, year: $year, payout_rate: $prate})", 
+                            code=code, year=year, prate=p_rate)
+
+            # 9. Bonus Rates (상여금지급률)
+            for pos_code, eval_g, rate in BONUS_RATE_TABLE:
+                code = f"BONUS-EVAL-{pos_code}-{eval_g}"
+                session.run("""
+                MATCH (e:EvaluationGrade {name: $eval_g})
+                MERGE (b:BonusRate {code: $code, rate: $rate})
+                MERGE (e)-[:HAS_BONUS_RATE {for_duty: $pos_code}]->(b)
+                """, eval_g=eval_g, code=code, rate=rate, pos_code=pos_code)
+
+            logger.info("Loaded complete BOK Compensation rules into Neo4j successfully!")
+
+if __name__ == "__main__":
+    seeder = GraphSchemaSeeder(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+    try:
+        seeder.wipe_database()
+        seeder.insert_all_data()
+    except Exception as e:
+        logger.error(f"Error seeding database: {e}")
+        traceback.print_exc()
+    finally:
+        seeder.close()

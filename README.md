@@ -281,7 +281,8 @@ flowchart TD
 │   ├── bok_compensation_neo4j/     # Neo4j 백엔드 (동일 인터페이스)
 │   │   ├── agent.py                #   커스텀 StateGraph (HCX+Qwen MoE)
 │   │   ├── config.py               #   Neo4j 연결 설정
-│   │   └── insert_data.py          #   수치 데이터 적재
+│   │   ├── data_tables.py          #   별표 수치 데이터(SALARY_TABLE 등)
+│   │   └── insert_data.py          #   wipe + Cypher MERGE 시더
 │   │
 │   ├── bok_compensation_context/   # Context RAG (Graph DB 불필요)
 │   │   ├── context_query.py        #   전처리 문서 기반 QA
